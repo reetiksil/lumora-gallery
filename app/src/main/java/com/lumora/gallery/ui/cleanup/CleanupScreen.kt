@@ -87,26 +87,27 @@ fun CleanupScreen(
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            val all = mediaRepository.getAllMediaItems()
+            val all: List<MediaItem> = mediaRepository.getAllMediaItems()
 
             // 1. Large files (> 50 MB)
-            val large = all.filter { it.sizeBytes > 50L * 1024 * 1024 }
-                .sortedByDescending { it.sizeBytes }
+            val large = all.filter { item: MediaItem -> item.sizeBytes > 50L * 1024 * 1024 }
+                .sortedByDescending { item: MediaItem -> item.sizeBytes }
             largeFiles.addAll(large)
 
             // 2. Duplicate detection by size & dimension
-            val sizeMap = all.groupBy { it.sizeBytes }
+            val sizeMap: Map<Long, List<MediaItem>> = all.groupBy { item: MediaItem -> item.sizeBytes }
             val duplicates = mutableListOf<MediaItem>()
-            sizeMap.values.filter { it.size > 1 }.forEach { group ->
-                // First item is original, others are duplicates
-                duplicates.addAll(group.drop(1))
+            for (group in sizeMap.values) {
+                if (group.size > 1) {
+                    duplicates.addAll(group.drop(1))
+                }
             }
             duplicateFiles.addAll(duplicates)
 
             // 3. Old screenshots (> 30 days old)
             val thirtyDaysAgo = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
-            val screenshots = all.filter {
-                it.bucketName.contains("Screenshot", ignoreCase = true) && it.dateTakenMs < thirtyDaysAgo
+            val screenshots = all.filter { item: MediaItem ->
+                item.bucketName.contains("Screenshot", ignoreCase = true) && item.dateTakenMs < thirtyDaysAgo
             }
             oldScreenshots.addAll(screenshots)
 
@@ -212,7 +213,7 @@ fun CleanupScreen(
                     }
                 }
             } else {
-                val totalBytes = currentList.sumOf { it.sizeBytes }
+                val totalBytes = currentList.sumOf { item: MediaItem -> item.sizeBytes }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -311,3 +312,4 @@ private fun CleanupItemRow(
         }
     }
 }
+

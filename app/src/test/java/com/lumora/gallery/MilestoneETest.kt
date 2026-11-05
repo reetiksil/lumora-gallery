@@ -93,3 +93,4 @@ class MilestoneETest {
         assertTrue(scales.contains(TimeScale.DAYS))
     }
 }
+

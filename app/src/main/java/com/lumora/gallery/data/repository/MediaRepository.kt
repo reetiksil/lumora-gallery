@@ -342,6 +342,10 @@ class MediaRepository(
         return size
     }
 
+    suspend fun getAllMediaItems(): List<MediaItem> = withContext(Dispatchers.IO) {
+        queryMedia(emptySet())
+    }
+
     fun groupMediaByDate(items: List<MediaItem>): Map<String, List<MediaItem>> {
         return MediaGrouping.groupMediaByDate(items)
     }

@@ -129,7 +129,7 @@ fun SettingsScreen(
                     SettingsRowAction(
                         icon = Icons.Rounded.PhotoLibrary,
                         title = "Photos tab sources",
-                        subtitle = "${state.selectedBucketCount} albums included in timeline",
+                        subtitle = "${state.selectedBucketIds.size} albums included in timeline",
                         onClick = onOpenPhotosSources
                     )
                     SettingsDivider()
@@ -151,8 +151,8 @@ fun SettingsScreen(
                     SettingsRowToggle(
                         title = "Autoplay videos without sound",
                         subtitle = "Play video previews muted in viewer",
-                        checked = state.autoplayVideosMuted,
-                        onCheckedChange = { viewModel.setAutoplayVideosMuted(it) }
+                        checked = state.autoplayMuted,
+                        onCheckedChange = { viewModel.toggleAutoplayMuted(it) }
                     )
                 }
             }
@@ -166,7 +166,7 @@ fun SettingsScreen(
                         title = "Erase personal information",
                         subtitle = "Automatically strip EXIF GPS location when sharing",
                         checked = state.eraseExifOnShare,
-                        onCheckedChange = { viewModel.setEraseExifOnShare(it) }
+                        onCheckedChange = { viewModel.toggleEraseExif(it) }
                     )
                 }
             }
@@ -179,7 +179,7 @@ fun SettingsScreen(
                     SettingsRowAction(
                         icon = Icons.Rounded.Storage,
                         title = "Thumbnail Cache",
-                        subtitle = "${state.cacheSizeBytesFormatted} used (Cap: ${state.cacheLimitMb} MB)",
+                        subtitle = "${state.currentCacheFormatted} used (Cap: ${state.diskCacheLimitMb} MB)",
                         onClick = { /* Info */ }
                     )
                     SettingsDivider()

@@ -431,7 +431,7 @@ private fun PinnedAlbumTile(
             maxLines = 1
         )
         Text(
-            text = "${album.mediaCount}",
+            text = "${album.itemCount}",
             fontSize = 12.sp,
             color = TextSecondary
         )
@@ -484,7 +484,7 @@ private fun MoreAlbumTile(
             maxLines = 1
         )
         Text(
-            text = "${album.mediaCount}",
+            text = "${album.itemCount}",
             fontSize = 11.sp,
             color = TextSecondary
         )
