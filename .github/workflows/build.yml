@@ -47,20 +47,15 @@ jobs:
       # Step 4: Bootstrap Gradle Wrapper if not committed as binary
       - name: Generate Gradle Wrapper
         run: |
-          set -x
           if [ ! -f "gradlew" ]; then
-            echo "Downloading Gradle 8.11.1..."
-            curl -f -sSL "https://services.gradle.org/distributions/gradle-8.11.1-bin.zip" -o /tmp/gradle.zip
-            ls -lh /tmp/gradle.zip
+            echo "Downloading Gradle 8.11.1 to bootstrap wrapper..."
+            curl -sSL "https://services.gradle.org/distributions/gradle-8.11.1-bin.zip" -o /tmp/gradle.zip
             unzip -q -o /tmp/gradle.zip -d /tmp/
-            ls -la /tmp/gradle-8.11.1/bin/
             chmod +x /tmp/gradle-8.11.1/bin/gradle
-            /tmp/gradle-8.11.1/bin/gradle -v
             /tmp/gradle-8.11.1/bin/gradle wrapper --gradle-version 8.11.1 --no-daemon
             rm -f /tmp/gradle.zip
           fi
           chmod +x gradlew
-          ls -la gradlew gradle/wrapper/
 
       # ================================================================
       # QUALITY GATE 1: Unit Tests
