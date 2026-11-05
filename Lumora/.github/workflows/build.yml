@@ -1,0 +1,100 @@
+# ====================================================================
+# Stage 2: Continuous Integration Pipeline with Quality Gates
+# ====================================================================
+# Concepts introduced in Stage 2:
+# 1. Quality Gates: Automated checks (tests + linting) that guarantee code
+#    correctness and style BEFORE building the final output. If any test
+#    or lint error fails, the pipeline aborts immediately.
+# 2. Automated Unit Tests: Runs JVM test suites without needing a device.
+# 3. Static Code Analysis (Lint): Scans for security bugs, performance
+#    pitfalls, and missing resources across Android configurations.
+# 4. Report Artifacts: Saves interactive HTML test and lint reports as
+#    downloadable artifacts so you can inspect failures directly.
+# ====================================================================
+name: Lumora CI - Quality Gates & Build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Test, Lint & Assemble
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout git repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up JDK 17 (Temurin distribution)
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # Step 3: Configure Gradle caching for fast builds
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+          cache-read-only: false
+
+      # Step 4: Bootstrap Gradle Wrapper if not committed as binary
+      - name: Generate Gradle Wrapper
+        run: |
+          if [ ! -f "gradlew" ]; then
+            gradle wrapper --gradle-version 8.11.1
+          fi
+          chmod +x gradlew
+
+      # ================================================================
+      # QUALITY GATE 1: Unit Tests
+      # Compiles and runs all JUnit unit tests in app/src/test/
+      # ================================================================
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      # Upload Test Results Artifact (browsable HTML test reports)
+      - name: Upload Test Report Artifact
+        if: always() # Run even if tests fail so you can see why!
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: app/build/reports/tests/testDebugUnitTest/
+          retention-days: 7
+
+      # ================================================================
+      # QUALITY GATE 2: Android Lint (Static Analysis)
+      # Inspects code for potential bugs, resource leaks, and API deprecations
+      # ================================================================
+      - name: Run Android Lint
+        run: ./gradlew lintDebug --stacktrace
+
+      # Upload Lint Report Artifact
+      - name: Upload Lint Report Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.html
+          retention-days: 7
+
+      # ================================================================
+      # BUILD STEP: Assemble Debug APK
+      # Only runs if both Quality Gate 1 and Quality Gate 2 PASS!
+      # ================================================================
+      - name: Assemble Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      # Step 7: Upload APK Artifact for phone installation
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumora-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
