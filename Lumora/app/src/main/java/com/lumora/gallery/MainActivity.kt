@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,9 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +35,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import com.lumora.gallery.data.model.Album
+import com.lumora.gallery.ui.albums.AlbumDetailScreen
+import com.lumora.gallery.ui.albums.AlbumsScreen
+import com.lumora.gallery.ui.albums.AlbumsViewModel
+import com.lumora.gallery.ui.navigation.FloatingNavBar
+import com.lumora.gallery.ui.navigation.NavTab
+import com.lumora.gallery.ui.settings.PhotosSourcesScreen
+import com.lumora.gallery.ui.settings.SettingsScreen
+import com.lumora.gallery.ui.settings.SettingsViewModel
 import com.lumora.gallery.ui.theme.AccentGold
 import com.lumora.gallery.ui.theme.LumoraTheme
 import com.lumora.gallery.ui.theme.PureBlack
@@ -42,12 +52,21 @@ import com.lumora.gallery.ui.theme.TextSecondary
 import com.lumora.gallery.ui.timeline.TimelineScreen
 import com.lumora.gallery.ui.timeline.TimelineViewModel
 
+enum class ActiveScreen {
+    MAIN_TABS,
+    ALBUM_DETAIL,
+    SETTINGS,
+    PHOTOS_SOURCES
+}
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var timelineViewModel: TimelineViewModel
+    private lateinit var albumsViewModel: AlbumsViewModel
+    private lateinit var settingsViewModel: SettingsViewModel
+
     private var hasPermissions by mutableStateOf(false)
 
-    // Permission launcher supporting Android 14+ granular media permissions
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -55,6 +74,7 @@ class MainActivity : ComponentActivity() {
         hasPermissions = granted
         if (granted) {
             timelineViewModel.loadAlbums()
+            albumsViewModel.loadAlbums()
         }
     }
 
@@ -68,12 +88,27 @@ class MainActivity : ComponentActivity() {
             TimelineViewModel.provideFactory(app.mediaRepository, app.preferencesRepository)
         )[TimelineViewModel::class.java]
 
+        albumsViewModel = ViewModelProvider(
+            this,
+            AlbumsViewModel.provideFactory(app.mediaRepository, app.preferencesRepository)
+        )[AlbumsViewModel::class.java]
+
+        settingsViewModel = ViewModelProvider(
+            this,
+            SettingsViewModel.provideFactory(app.preferencesRepository, app.mediaRepository)
+        )[SettingsViewModel::class.java]
+
         checkInitialPermissions()
 
         setContent {
             LumoraTheme {
                 if (hasPermissions) {
-                    TimelineScreen(viewModel = timelineViewModel)
+                    MainNavigationHost(
+                        timelineViewModel = timelineViewModel,
+                        albumsViewModel = albumsViewModel,
+                        settingsViewModel = settingsViewModel,
+                        app = app
+                    )
                 } else {
                     PermissionRequestScreen(onRequestPermission = { requestMediaPermissions() })
                 }
@@ -84,7 +119,6 @@ class MainActivity : ComponentActivity() {
     private fun getRequiredPermissions(): Array<String> {
         return when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> {
-                // Android 14+ (API 34+)
                 arrayOf(
                     Manifest.permission.READ_MEDIA_IMAGES,
                     Manifest.permission.READ_MEDIA_VIDEO,
@@ -92,14 +126,12 @@ class MainActivity : ComponentActivity() {
                 )
             }
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
-                // Android 13 (API 33)
                 arrayOf(
                     Manifest.permission.READ_MEDIA_IMAGES,
                     Manifest.permission.READ_MEDIA_VIDEO
                 )
             }
             else -> {
-                // Android 12 and below (API <= 32)
                 arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
             }
         }
@@ -118,6 +150,88 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+fun MainNavigationHost(
+    timelineViewModel: TimelineViewModel,
+    albumsViewModel: AlbumsViewModel,
+    settingsViewModel: SettingsViewModel,
+    app: LumoraApplication
+) {
+    var activeScreen by remember { mutableStateOf(ActiveScreen.MAIN_TABS) }
+    var currentTab by remember { mutableStateOf(NavTab.PHOTOS) }
+    var selectedAlbumForDetail by remember { mutableStateOf<Album?>(null) }
+
+    BackHandler(enabled = activeScreen != ActiveScreen.MAIN_TABS) {
+        when (activeScreen) {
+            ActiveScreen.PHOTOS_SOURCES -> activeScreen = ActiveScreen.SETTINGS
+            ActiveScreen.SETTINGS -> activeScreen = ActiveScreen.MAIN_TABS
+            ActiveScreen.ALBUM_DETAIL -> activeScreen = ActiveScreen.MAIN_TABS
+            ActiveScreen.MAIN_TABS -> { /* Default system back */ }
+        }
+    }
+
+    when (activeScreen) {
+        ActiveScreen.MAIN_TABS -> {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                containerColor = PureBlack,
+                bottomBar = {
+                    FloatingNavBar(
+                        currentTab = currentTab,
+                        onTabSelected = { currentTab = it },
+                        onToggleGridDensity = { timelineViewModel.cycleGridColumns() },
+                        onOpenFilter = { timelineViewModel.openAlbumPicker() }
+                    )
+                }
+            ) { padding ->
+                Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+                    if (currentTab == NavTab.PHOTOS) {
+                        TimelineScreen(
+                            viewModel = timelineViewModel,
+                            onOpenSettings = { activeScreen = ActiveScreen.SETTINGS }
+                        )
+                    } else {
+                        AlbumsScreen(
+                            viewModel = albumsViewModel,
+                            onAlbumClick = { album ->
+                                selectedAlbumForDetail = album
+                                activeScreen = ActiveScreen.ALBUM_DETAIL
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        ActiveScreen.ALBUM_DETAIL -> {
+            selectedAlbumForDetail?.let { album ->
+                AlbumDetailScreen(
+                    album = album,
+                    mediaRepository = app.mediaRepository,
+                    onBackClick = { activeScreen = ActiveScreen.MAIN_TABS },
+                    onItemClick = { /* Viewer opens in milestone c */ }
+                )
+            }
+        }
+
+        ActiveScreen.SETTINGS -> {
+            SettingsScreen(
+                viewModel = settingsViewModel,
+                onBackClick = { activeScreen = ActiveScreen.MAIN_TABS },
+                onOpenPhotosSources = { activeScreen = ActiveScreen.PHOTOS_SOURCES }
+            )
+        }
+
+        ActiveScreen.PHOTOS_SOURCES -> {
+            PhotosSourcesScreen(
+                viewModel = settingsViewModel,
+                preferencesRepository = app.preferencesRepository,
+                onBackClick = { activeScreen = ActiveScreen.SETTINGS }
+            )
+        }
+    }
+}
+
+@Composable
 fun PermissionRequestScreen(onRequestPermission: () -> Unit) {
     Box(
         modifier = Modifier
@@ -126,9 +240,7 @@ fun PermissionRequestScreen(onRequestPermission: () -> Unit) {
             .padding(32.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = stringResource(R.string.permission_required_title),
                 fontSize = 22.sp,
@@ -136,9 +248,7 @@ fun PermissionRequestScreen(onRequestPermission: () -> Unit) {
                 color = TextPrimary,
                 textAlign = TextAlign.Center
             )
-
             Spacer(modifier = Modifier.height(12.dp))
-
             Text(
                 text = stringResource(R.string.permission_required_desc),
                 fontSize = 14.sp,
@@ -146,16 +256,11 @@ fun PermissionRequestScreen(onRequestPermission: () -> Unit) {
                 textAlign = TextAlign.Center,
                 lineHeight = 20.sp
             )
-
             Spacer(modifier = Modifier.height(28.dp))
-
             Button(
                 onClick = onRequestPermission,
                 shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = AccentGold,
-                    contentColor = PureBlack
-                ),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentGold, contentColor = PureBlack),
                 modifier = Modifier.height(48.dp)
             ) {
                 Text(

@@ -1,8 +1,5 @@
 package com.lumora.gallery.ui.timeline
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -33,7 +30,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -55,8 +51,6 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.lumora.gallery.data.model.MediaItem
-import com.lumora.gallery.ui.navigation.FloatingNavBar
-import com.lumora.gallery.ui.navigation.NavTab
 import com.lumora.gallery.ui.onboarding.AlbumSelectionSheet
 import com.lumora.gallery.ui.theme.AccentGold
 import com.lumora.gallery.ui.theme.BadgeBackground
@@ -68,6 +62,7 @@ import com.lumora.gallery.ui.theme.TextSecondary
 @Composable
 fun TimelineScreen(
     viewModel: TimelineViewModel,
+    onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -76,66 +71,49 @@ fun TimelineScreen(
     val selectedBucketIds by viewModel.selectedBucketIds.collectAsState()
     val showAlbumPicker by viewModel.showAlbumPicker.collectAsState()
 
-    var currentTab by remember { mutableStateOf(NavTab.PHOTOS) }
     var menuExpanded by remember { mutableStateOf(false) }
-
-    // Pinch-to-zoom gesture tracking
     var scaleZoom by remember { mutableFloatStateOf(1f) }
 
-    Scaffold(
+    Column(
         modifier = modifier
             .fillMaxSize()
+            .background(PureBlack)
             .pointerInput(Unit) {
                 detectTransformGestures { _, _, zoom, _ ->
                     scaleZoom *= zoom
                     if (scaleZoom > 1.3f) {
-                        // Zoom in -> fewer columns (bigger items)
                         if (gridColumns > 2) {
                             viewModel.setGridColumns(gridColumns - 1)
                         }
                         scaleZoom = 1f
                     } else if (scaleZoom < 0.75f) {
-                        // Zoom out -> more columns (smaller items)
                         if (gridColumns < 5) {
                             viewModel.setGridColumns(gridColumns + 1)
                         }
                         scaleZoom = 1f
                     }
                 }
+            }
+    ) {
+        TimelineTopBar(
+            onSearchClick = { /* Search will be connected in milestone e */ },
+            onMenuClick = { menuExpanded = true },
+            menuExpanded = menuExpanded,
+            onDismissMenu = { menuExpanded = false },
+            onSelectAlbumsClick = {
+                menuExpanded = false
+                viewModel.openAlbumPicker()
             },
-        containerColor = PureBlack,
-        topBar = {
-            TimelineTopBar(
-                onSearchClick = { /* Search will be connected in milestone e */ },
-                onMenuClick = { menuExpanded = true },
-                menuExpanded = menuExpanded,
-                onDismissMenu = { menuExpanded = false },
-                onSelectAlbumsClick = {
-                    menuExpanded = false
-                    viewModel.openAlbumPicker()
-                }
-            )
-        },
-        bottomBar = {
-            FloatingNavBar(
-                currentTab = currentTab,
-                onTabSelected = { currentTab = it },
-                onToggleGridDensity = { viewModel.cycleGridColumns() },
-                onOpenFilter = { viewModel.openAlbumPicker() }
-            )
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
+            onSettingsClick = {
+                menuExpanded = false
+                onOpenSettings()
+            }
+        )
+
+        Box(modifier = Modifier.fillMaxSize()) {
             when (val state = uiState) {
                 is TimelineUiState.Loading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = AccentGold)
                     }
                 }
@@ -156,7 +134,7 @@ fun TimelineScreen(
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Check that your selected albums have photos or videos, or pick more albums.",
+                                text = "Check that your selected albums have photos or videos, or pick more albums in Settings.",
                                 fontSize = 14.sp,
                                 color = TextSecondary
                             )
@@ -174,7 +152,6 @@ fun TimelineScreen(
             }
         }
 
-        // Onboarding / Album selection sheet
         if (showAlbumPicker) {
             AlbumSelectionSheet(
                 albums = allAlbums,
@@ -194,7 +171,8 @@ private fun TimelineTopBar(
     onMenuClick: () -> Unit,
     menuExpanded: Boolean,
     onDismissMenu: () -> Unit,
-    onSelectAlbumsClick: () -> Unit
+    onSelectAlbumsClick: () -> Unit,
+    onSettingsClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -236,6 +214,10 @@ private fun TimelineTopBar(
                         text = { Text("Photos tab sources", color = TextPrimary) },
                         onClick = onSelectAlbumsClick
                     )
+                    DropdownMenuItem(
+                        text = { Text("Settings", color = TextPrimary) },
+                        onClick = onSettingsClick
+                    )
                 }
             }
         }
@@ -256,7 +238,6 @@ private fun MediaGrid(
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         groupedMedia.forEach { (header, items) ->
-            // Sticky date header spanning all columns
             item(span = { GridItemSpan(columns) }) {
                 Text(
                     text = header,
@@ -267,7 +248,6 @@ private fun MediaGrid(
                 )
             }
 
-            // Grid items for this date section
             items(
                 items = items,
                 key = { it.id }
@@ -304,7 +284,6 @@ private fun MediaGridItem(
             contentScale = ContentScale.Crop
         )
 
-        // Video duration badge
         if (item.isVideo && item.formattedDuration.isNotEmpty()) {
             Row(
                 modifier = Modifier

@@ -12,8 +12,8 @@ android {
         applicationId = "com.lumora.gallery"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-alpha"
+        versionCode = 2
+        versionName = "0.2.0-milestone-b"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -57,6 +57,21 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
+    }
+
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = false
+        textReport = true
+        textOutput = file("stdout")
+        htmlReport = true
+        disable += setOf("VectorRaster", "ContentDescription")
     }
 
     packaging {
