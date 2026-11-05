@@ -62,6 +62,7 @@ import com.lumora.gallery.ui.theme.TextPrimary
 import com.lumora.gallery.ui.theme.TextSecondary
 import com.lumora.gallery.ui.timeline.TimelineScreen
 import com.lumora.gallery.ui.timeline.TimelineViewModel
+import com.lumora.gallery.ui.editor.PhotoEditorScreen
 import com.lumora.gallery.ui.viewer.MediaViewerScreen
 import kotlinx.coroutines.launch
 
@@ -70,7 +71,8 @@ enum class ActiveScreen {
     ALBUM_DETAIL,
     SETTINGS,
     PHOTOS_SOURCES,
-    VIEWER
+    VIEWER,
+    EDITOR
 }
 
 class MainActivity : ComponentActivity() {
@@ -284,6 +286,7 @@ fun MainNavigationHost(
 
     var viewerMediaList by remember { mutableStateOf<List<MediaItem>>(externalMediaList) }
     var viewerInitialIndex by remember { mutableStateOf(0) }
+    var selectedMediaForEdit by remember { mutableStateOf<MediaItem?>(null) }
 
     val eraseExifOnShare by app.preferencesRepository.eraseExifOnShareFlow.collectAsState(initial = true)
     val autoplayVideosMuted by app.preferencesRepository.autoplayVideosMutedFlow.collectAsState(initial = true)
@@ -308,6 +311,7 @@ fun MainNavigationHost(
                     activeScreen = ActiveScreen.MAIN_TABS
                 }
             }
+            ActiveScreen.EDITOR -> activeScreen = ActiveScreen.VIEWER
             ActiveScreen.PHOTOS_SOURCES -> activeScreen = ActiveScreen.SETTINGS
             ActiveScreen.SETTINGS -> activeScreen = ActiveScreen.MAIN_TABS
             ActiveScreen.ALBUM_DETAIL -> activeScreen = ActiveScreen.MAIN_TABS
@@ -401,10 +405,25 @@ fun MainNavigationHost(
                         activeScreen = ActiveScreen.MAIN_TABS
                     }
                 },
-                onEditMedia = { /* Editor launches in milestone d */ },
+                onEditMedia = { item ->
+                    selectedMediaForEdit = item
+                    activeScreen = ActiveScreen.EDITOR
+                },
                 eraseExifOnShare = eraseExifOnShare,
                 autoplayVideosMuted = autoplayVideosMuted
             )
+        }
+
+        ActiveScreen.EDITOR -> {
+            selectedMediaForEdit?.let { mediaItem ->
+                PhotoEditorScreen(
+                    mediaItem = mediaItem,
+                    onDismiss = { activeScreen = ActiveScreen.VIEWER },
+                    onSaved = { _ ->
+                        activeScreen = ActiveScreen.VIEWER
+                    }
+                )
+            }
         }
 
         ActiveScreen.SETTINGS -> {

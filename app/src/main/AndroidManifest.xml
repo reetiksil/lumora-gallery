@@ -81,6 +81,13 @@
                 <data android:mimeType="video/*" />
             </intent-filter>
 
+            <!-- ACTION_EDIT for images -->
+            <intent-filter>
+                <action android:name="android.intent.action.EDIT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+
             <!-- ACTION_SET_WALLPAPER -->
             <intent-filter>
                 <action android:name="android.intent.action.ATTACH_DATA" />

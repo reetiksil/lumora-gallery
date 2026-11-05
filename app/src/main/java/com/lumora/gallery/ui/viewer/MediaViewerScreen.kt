@@ -215,12 +215,14 @@ fun MediaViewerScreen(
                         }
                     )
 
-                    // Edit Button (Hook for Milestone d)
-                    ViewerActionButton(
-                        icon = Icons.Rounded.Edit,
-                        label = "Edit",
-                        onClick = { onEditMedia(currentItem) }
-                    )
+                    // Edit Button for Photos
+                    if (!currentItem.isVideo) {
+                        ViewerActionButton(
+                            icon = Icons.Rounded.Edit,
+                            label = "Edit",
+                            onClick = { onEditMedia(currentItem) }
+                        )
+                    }
 
                     // Favourite Button
                     ViewerActionButton(

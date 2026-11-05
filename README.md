@@ -96,10 +96,12 @@ git push origin main
 │   │   │           ├── timeline/        # Date-grouped grid, pinch zoom, duration badges
 │   │   │           ├── albums/          # Pinned cards, All Albums list, Album Detail grid
 │   │   │           ├── viewer/          # MediaViewerScreen, ZoomableImage, VideoPlayer, MediaInfoSheet
+│   │   │           ├── editor/          # PhotoEditorScreen, ColorMatrixGenerator, ImageSaverUtil, ImageDecoderUtil
 │   │   │           └── settings/        # Photos sources, Cache manager, Sort order
 │   │   └── test/java/com/lumora/gallery/
 │   │       ├── MediaGroupingTest.kt     # Unit tests for album filtering, sorting, date headers
-│   │       └── MediaViewerTest.kt       # Unit tests for video duration, EXIF formatting & metadata
+│   │       ├── MediaViewerTest.kt       # Unit tests for video duration, EXIF formatting & metadata
+│   │       └── PhotoEditorTest.kt       # Unit tests for color matrix math, filters, undo/redo, ratios
 │   ├── build.gradle.kts                 # Root build script
 │   ├── settings.gradle.kts              # Plugin repositories and project name
 │   ├── gradle.properties                # Memory limit (1g), build caching, R8 full mode
@@ -113,6 +115,6 @@ git push origin main
 - [x] **Milestone (a)**: Core skeleton, modern permissions flow, MediaStore timeline with album filtering, and CI Stage 1 (automated debug build).
 - [x] **Milestone (b)**: Full Albums tab (pinned cards, long-press actions, album detail grid), Settings screen (Photos tab sources, cache limits, clear cache), and CI Stage 2 (Quality gates: unit tests & lint).
 - [x] **Milestone (c)**: Interactive Media Viewer (pinch/double-tap zoom, swipe down to dismiss, swipe between items, EXIF metadata sheet), Media3 video playback with transport controls & PiP, and Default Gallery intent filters (`ACTION_VIEW`, `ACTION_PICK`, `ACTION_GET_CONTENT`, `ACTION_SET_WALLPAPER`).
-- [ ] **Milestone (d)**: Built-in non-destructive photo editor (crop, rotate, filters, adjustments, markup, blur brush, bitmap pooling).
+- [x] **Milestone (d)**: Built-in non-destructive photo editor (free/fixed aspect ratio crops, 90° rotation, horizontal/vertical flips, 17 ColorMatrix filters with live intensity slider, brightness/contrast/saturation/warmth/exposure/vignette sliders, freehand markup brush with privacy blur/highlighter/eraser, text overlays with styling, downscaled preview decoding with zero OOM risk, and high-resolution export dialog with JPEG/PNG/WebP format & quality control).
 - [ ] **Milestone (e)**: Trash with restore, private vault with biometric lock, fast search, duplicate and large-file cleanup.
 - [ ] **Milestone (f)**: Release signing, R8 release build optimization (<8 MB APK), size regression CI guards, and GitHub Releases integration.
