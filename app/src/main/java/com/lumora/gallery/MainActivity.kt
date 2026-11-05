@@ -62,7 +62,13 @@ import com.lumora.gallery.ui.theme.TextPrimary
 import com.lumora.gallery.ui.theme.TextSecondary
 import com.lumora.gallery.ui.timeline.TimelineScreen
 import com.lumora.gallery.ui.timeline.TimelineViewModel
+import com.lumora.gallery.ui.cleanup.CleanupScreen
 import com.lumora.gallery.ui.editor.PhotoEditorScreen
+import com.lumora.gallery.ui.navigation.NavMode
+import com.lumora.gallery.ui.navigation.TimeScale
+import com.lumora.gallery.ui.search.SearchScreen
+import com.lumora.gallery.ui.trash.RecentlyDeletedScreen
+import com.lumora.gallery.ui.vault.PrivateVaultScreen
 import com.lumora.gallery.ui.viewer.MediaViewerScreen
 import kotlinx.coroutines.launch
 
@@ -72,7 +78,11 @@ enum class ActiveScreen {
     SETTINGS,
     PHOTOS_SOURCES,
     VIEWER,
-    EDITOR
+    EDITOR,
+    SEARCH,
+    PRIVATE_VAULT,
+    CLEANUP,
+    RECENTLY_DELETED
 }
 
 class MainActivity : ComponentActivity() {
@@ -290,6 +300,8 @@ fun MainNavigationHost(
 
     val eraseExifOnShare by app.preferencesRepository.eraseExifOnShareFlow.collectAsState(initial = true)
     val autoplayVideosMuted by app.preferencesRepository.autoplayVideosMutedFlow.collectAsState(initial = true)
+    val currentTimeScale by timelineViewModel.timeScale.collectAsState()
+    val isTimeScaleMode by timelineViewModel.isTimeScaleMode.collectAsState()
 
     // Trigger viewer if external media list resolved after launch
     LaunchedEffect(externalMediaList) {
@@ -300,7 +312,11 @@ fun MainNavigationHost(
         }
     }
 
-    BackHandler(enabled = activeScreen != ActiveScreen.MAIN_TABS) {
+    BackHandler(enabled = activeScreen != ActiveScreen.MAIN_TABS || isTimeScaleMode) {
+        if (isTimeScaleMode) {
+            timelineViewModel.exitTimeScaleMode()
+            return@BackHandler
+        }
         when (activeScreen) {
             ActiveScreen.VIEWER -> {
                 if (isExternalViewIntent) {
@@ -315,6 +331,10 @@ fun MainNavigationHost(
             ActiveScreen.PHOTOS_SOURCES -> activeScreen = ActiveScreen.SETTINGS
             ActiveScreen.SETTINGS -> activeScreen = ActiveScreen.MAIN_TABS
             ActiveScreen.ALBUM_DETAIL -> activeScreen = ActiveScreen.MAIN_TABS
+            ActiveScreen.SEARCH -> activeScreen = ActiveScreen.MAIN_TABS
+            ActiveScreen.PRIVATE_VAULT -> activeScreen = ActiveScreen.MAIN_TABS
+            ActiveScreen.CLEANUP -> activeScreen = ActiveScreen.MAIN_TABS
+            ActiveScreen.RECENTLY_DELETED -> activeScreen = ActiveScreen.MAIN_TABS
             ActiveScreen.MAIN_TABS -> { /* Default system back */ }
         }
     }
@@ -328,10 +348,17 @@ fun MainNavigationHost(
                 bottomBar = {
                     if (!isPickerMode) {
                         FloatingNavBar(
+                            navMode = if (isTimeScaleMode) NavMode.TIME_SCALE else NavMode.TABS,
                             currentTab = currentTab,
+                            currentTimeScale = currentTimeScale,
                             onTabSelected = { currentTab = it },
-                            onToggleGridDensity = { timelineViewModel.cycleGridColumns() },
-                            onOpenFilter = { timelineViewModel.openAlbumPicker() }
+                            onTimeScaleSelected = { timelineViewModel.setTimeScale(it) },
+                            onToggleTimeScaleMode = { timelineViewModel.toggleTimeScaleMode() },
+                            onRightActionClick = {
+                                if (currentTab == NavTab.PHOTOS) {
+                                    timelineViewModel.openAlbumPicker()
+                                }
+                            }
                         )
                     }
                 }
@@ -341,6 +368,7 @@ fun MainNavigationHost(
                         TimelineScreen(
                             viewModel = timelineViewModel,
                             onOpenSettings = { activeScreen = ActiveScreen.SETTINGS },
+                            onOpenSearch = { activeScreen = ActiveScreen.SEARCH },
                             onItemClick = { item, allItems ->
                                 if (isPickerMode) {
                                     onMediaSelectedInPicker(item)
@@ -357,7 +385,11 @@ fun MainNavigationHost(
                             onAlbumClick = { album ->
                                 selectedAlbumForDetail = album
                                 activeScreen = ActiveScreen.ALBUM_DETAIL
-                            }
+                            },
+                            onOpenSearch = { activeScreen = ActiveScreen.SEARCH },
+                            onOpenPrivateVault = { activeScreen = ActiveScreen.PRIVATE_VAULT },
+                            onOpenCleanup = { activeScreen = ActiveScreen.CLEANUP },
+                            onOpenRecentlyDeleted = { activeScreen = ActiveScreen.RECENTLY_DELETED }
                         )
                     }
                 }
@@ -441,6 +473,42 @@ fun MainNavigationHost(
                 viewModel = settingsViewModel,
                 preferencesRepository = app.preferencesRepository,
                 onBackClick = { activeScreen = ActiveScreen.SETTINGS }
+            )
+        }
+
+        ActiveScreen.SEARCH -> {
+            onCurrentViewingItemChanged(null)
+            SearchScreen(
+                mediaRepository = app.mediaRepository,
+                onBackClick = { activeScreen = ActiveScreen.MAIN_TABS },
+                onItemClick = { item, allResults ->
+                    viewerMediaList = allResults
+                    viewerInitialIndex = allResults.indexOf(item).coerceAtLeast(0)
+                    activeScreen = ActiveScreen.VIEWER
+                }
+            )
+        }
+
+        ActiveScreen.PRIVATE_VAULT -> {
+            onCurrentViewingItemChanged(null)
+            PrivateVaultScreen(
+                onBackClick = { activeScreen = ActiveScreen.MAIN_TABS }
+            )
+        }
+
+        ActiveScreen.CLEANUP -> {
+            onCurrentViewingItemChanged(null)
+            CleanupScreen(
+                mediaRepository = app.mediaRepository,
+                onBackClick = { activeScreen = ActiveScreen.MAIN_TABS },
+                onDeleteMedia = { item -> onDeleteMediaItem(item) }
+            )
+        }
+
+        ActiveScreen.RECENTLY_DELETED -> {
+            onCurrentViewingItemChanged(null)
+            RecentlyDeletedScreen(
+                onBackClick = { activeScreen = ActiveScreen.MAIN_TABS }
             )
         }
     }

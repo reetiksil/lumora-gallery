@@ -1,5 +1,7 @@
 package com.lumora.gallery.ui.settings
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,52 +14,46 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.CleaningServices
-import androidx.compose.material.icons.rounded.ColorLens
-import androidx.compose.material.icons.rounded.FolderSpecial
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.CloudUpload
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Sort
 import androidx.compose.material.icons.rounded.Storage
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lumora.gallery.data.model.SortOrder
-import com.lumora.gallery.data.model.ThemeMode
-import com.lumora.gallery.ui.theme.AccentGold
 import com.lumora.gallery.ui.theme.DarkBorder
-import com.lumora.gallery.ui.theme.DarkSurface
 import com.lumora.gallery.ui.theme.DarkSurfaceElevated
 import com.lumora.gallery.ui.theme.PureBlack
+import com.lumora.gallery.ui.theme.SoothingBlue
 import com.lumora.gallery.ui.theme.TextPrimary
 import com.lumora.gallery.ui.theme.TextSecondary
 
@@ -69,29 +65,32 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(PureBlack)
     ) {
-        // Top Header
+        // --- Top Bar ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 12.dp),
+                .statusBarsPadding()
+                .padding(horizontal = 8.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBackClick) {
                 Icon(
-                    imageVector = Icons.Rounded.ArrowBack,
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                     contentDescription = "Back",
                     tint = TextPrimary
                 )
             }
             Text(
                 text = "Settings",
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
                 color = TextPrimary,
                 modifier = Modifier.padding(start = 8.dp)
             )
@@ -101,179 +100,116 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // Section: Photos Tab Sources
+            // ==========================================
+            // Group 1: Backup (Matching Screenshot 3)
+            // ==========================================
             item {
-                SectionHeader("Photos Tab")
-                SettingNavigationItem(
-                    icon = Icons.Rounded.FolderSpecial,
-                    title = "Photos tab sources",
-                    subtitle = "${state.selectedBucketIds.size} albums selected",
-                    onClick = onOpenPhotosSources
-                )
-            }
-
-            // Section: Storage & Cache (Hard Cap Guarantee)
-            item {
-                SectionHeader("Storage & Cache")
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(DarkSurfaceElevated)
-                        .padding(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Disk Cache Usage", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = TextPrimary)
-                            Text("Current: ${state.currentCacheFormatted} / Cap: ${state.diskCacheLimitMb} MB", fontSize = 13.sp, color = TextSecondary)
+                SettingsSection(title = "Backup") {
+                    SettingsRowAction(
+                        icon = Icons.Rounded.CloudUpload,
+                        title = "Back up to Google Photos",
+                        subtitle = "Opens system backup settings (No cloud SDK inside Lumora)",
+                        onClick = {
+                            try {
+                                val intent = Intent(Settings.ACTION_SYNC_SETTINGS)
+                                context.startActivity(intent)
+                            } catch (_: Exception) {}
                         }
-                        Button(
-                            onClick = { viewModel.clearCache() },
-                            colors = ButtonDefaults.buttonColors(containerColor = AccentGold, contentColor = PureBlack),
-                            shape = RoundedCornerShape(18.dp),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Text("Clear cache", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text("Cache Cap Limit", fontSize = 13.sp, color = TextSecondary)
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(50, 100, 250).forEach { mb ->
-                            val isSelected = state.diskCacheLimitMb == mb
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSelected) AccentGold else DarkSurface)
-                                    .clickable { viewModel.setCacheLimitMb(mb) }
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "$mb MB",
-                                    color = if (isSelected) PureBlack else TextPrimary,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 13.sp
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "Guarantee: Lumora strictly evicts old thumbnails via LRU. It never creates duplicate databases or runs background AI clustering.",
-                        fontSize = 11.sp,
-                        color = TextSecondary,
-                        lineHeight = 15.sp
                     )
                 }
             }
 
-            // Section: Sorting & Display
+            // ==========================================
+            // Group 2: Browsing
+            // ==========================================
             item {
-                SectionHeader("Sorting & Playback")
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(DarkSurfaceElevated)
-                        .padding(16.dp)
-                ) {
-                    Text("Timeline Sort Order", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = TextPrimary)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    SortOrder.values().forEach { order ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { viewModel.setSortOrder(order) }
-                                .padding(vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(order.displayName, fontSize = 14.sp, color = if (state.sortOrder == order) AccentGold else TextSecondary)
-                            if (state.sortOrder == order) {
-                                Icon(imageVector = Icons.Rounded.Check, contentDescription = null, tint = AccentGold, modifier = Modifier.size(18.dp))
+                SettingsSection(title = "Browsing") {
+                    SettingsRowAction(
+                        icon = Icons.Rounded.PhotoLibrary,
+                        title = "Photos tab sources",
+                        subtitle = "${state.selectedBucketCount} albums included in timeline",
+                        onClick = onOpenPhotosSources
+                    )
+                    SettingsDivider()
+                    SettingsRowAction(
+                        icon = Icons.Rounded.Sort,
+                        title = "Sort",
+                        subtitle = state.sortOrder.displayName,
+                        onClick = {
+                            val next = when (state.sortOrder) {
+                                SortOrder.DATE_TAKEN_DESC -> SortOrder.DATE_TAKEN_ASC
+                                SortOrder.DATE_TAKEN_ASC -> SortOrder.DISPLAY_NAME_ASC
+                                SortOrder.DISPLAY_NAME_ASC -> SortOrder.DATE_MODIFIED_DESC
+                                SortOrder.DATE_MODIFIED_DESC -> SortOrder.DATE_TAKEN_DESC
                             }
+                            viewModel.setSortOrder(next)
                         }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Autoplay videos muted", fontSize = 14.sp, color = TextPrimary)
-                            Text("Videos in timeline and viewer start muted", fontSize = 12.sp, color = TextSecondary)
-                        }
-                        Switch(
-                            checked = state.autoplayMuted,
-                            onCheckedChange = { viewModel.toggleAutoplayMuted(it) },
-                            colors = SwitchDefaults.colors(checkedThumbColor = PureBlack, checkedTrackColor = AccentGold)
-                        )
-                    }
+                    )
+                    SettingsDivider()
+                    SettingsRowToggle(
+                        title = "Autoplay videos without sound",
+                        subtitle = "Play video previews muted in viewer",
+                        checked = state.autoplayVideosMuted,
+                        onCheckedChange = { viewModel.setAutoplayVideosMuted(it) }
+                    )
                 }
             }
 
-            // Section: Privacy
+            // ==========================================
+            // Group 3: Sharing & Privacy
+            // ==========================================
             item {
-                SectionHeader("Privacy")
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(DarkSurfaceElevated)
-                        .padding(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Erase personal info on share", fontSize = 14.sp, color = TextPrimary)
-                            Text("Strip EXIF metadata and GPS location before sharing", fontSize = 12.sp, color = TextSecondary)
-                        }
-                        Switch(
-                            checked = state.eraseExifOnShare,
-                            onCheckedChange = { viewModel.toggleEraseExif(it) },
-                            colors = SwitchDefaults.colors(checkedThumbColor = PureBlack, checkedTrackColor = AccentGold)
-                        )
-                    }
+                SettingsSection(title = "Sharing") {
+                    SettingsRowToggle(
+                        title = "Erase personal information",
+                        subtitle = "Automatically strip EXIF GPS location when sharing",
+                        checked = state.eraseExifOnShare,
+                        onCheckedChange = { viewModel.setEraseExifOnShare(it) }
+                    )
                 }
             }
 
-            // Section: About
+            // ==========================================
+            // Group 4: Storage & Cache (Hard 100MB Cap)
+            // ==========================================
             item {
-                SectionHeader("About")
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(DarkSurfaceElevated)
-                        .padding(16.dp)
-                ) {
-                    Text("Lumora Gallery", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextPrimary)
-                    Text("Version 0.2.0-milestone-b", fontSize = 13.sp, color = AccentGold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Zero trackers. Zero ads. No internet permission. Pure MediaStore speed.",
-                        fontSize = 12.sp,
-                        color = TextSecondary
+                SettingsSection(title = "Storage & Cache") {
+                    SettingsRowAction(
+                        icon = Icons.Rounded.Storage,
+                        title = "Thumbnail Cache",
+                        subtitle = "${state.cacheSizeBytesFormatted} used (Cap: ${state.cacheLimitMb} MB)",
+                        onClick = { /* Info */ }
+                    )
+                    SettingsDivider()
+                    SettingsRowAction(
+                        icon = Icons.Rounded.Delete,
+                        title = "Clear thumbnail cache",
+                        subtitle = "Safely deletes LRU disk cache; never loses original photos",
+                        trailingText = "Clear",
+                        onClick = { viewModel.clearCache() }
+                    )
+                }
+            }
+
+            // ==========================================
+            // Group 5: More
+            // ==========================================
+            item {
+                SettingsSection(title = "More") {
+                    SettingsRowAction(
+                        icon = Icons.Rounded.Lock,
+                        title = "Show Private album",
+                        subtitle = "Show Biometric Vault in Albums tab",
+                        onClick = { /* Toggle */ }
+                    )
+                    SettingsDivider()
+                    SettingsRowAction(
+                        icon = Icons.Rounded.Info,
+                        title = "About Lumora",
+                        subtitle = "Version 0.5.0 • Fully offline & private",
+                        onClick = { /* About */ }
                     )
                 }
                 Spacer(modifier = Modifier.height(40.dp))
@@ -283,49 +219,145 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.SemiBold,
-        color = AccentGold,
-        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+private fun SettingsSection(
+    title: String,
+    content: @Composable () -> Unit
+) {
+    Column {
+        Text(
+            text = title,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TextSecondary,
+            modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(DarkSurfaceElevated)
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SettingsDivider() {
+    HorizontalDivider(
+        color = DarkBorder,
+        thickness = 0.5.dp,
+        modifier = Modifier.padding(horizontal = 16.dp)
     )
 }
 
 @Composable
-private fun SettingNavigationItem(
-    icon: ImageVector,
+private fun SettingsRowAction(
+    icon: ImageVector? = null,
     title: String,
-    subtitle: String,
+    subtitle: String? = null,
+    trailingText: String? = null,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(DarkSurfaceElevated)
             .clickable(onClick = onClick)
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(DarkSurface),
-            contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(imageVector = icon, contentDescription = null, tint = AccentGold, modifier = Modifier.size(20.dp))
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = TextPrimary,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+            }
+            Column {
+                Text(
+                    text = title,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = TextPrimary
+                )
+                if (subtitle != null) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = subtitle,
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                }
+            }
         }
 
-        Spacer(modifier = Modifier.width(14.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (trailingText != null) {
+                Text(
+                    text = trailingText,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = SoothingBlue
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = TextSecondary,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
 
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
-            Text(text = subtitle, fontSize = 12.sp, color = TextSecondary)
+@Composable
+private fun SettingsRowToggle(
+    title: String,
+    subtitle: String? = null,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+            Text(
+                text = title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = TextPrimary
+            )
+            if (subtitle != null) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+            }
         }
 
-        Icon(imageVector = Icons.Rounded.ChevronRight, contentDescription = null, tint = TextSecondary)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = SoothingBlue,
+                uncheckedThumbColor = TextSecondary,
+                uncheckedTrackColor = DarkBorder
+            )
+        )
     }
 }

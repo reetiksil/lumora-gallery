@@ -73,6 +73,35 @@ object MediaGrouping {
     }
 
     /**
+     * Groups media items by year (e.g. "2026", "2025") for the Years cover view.
+     */
+    fun groupMediaByYear(items: List<MediaItem>): Map<String, List<MediaItem>> {
+        val cal = Calendar.getInstance()
+        val grouped = linkedMapOf<String, MutableList<MediaItem>>()
+        for (item in items) {
+            cal.timeInMillis = item.dateTakenMs
+            val yearStr = cal.get(Calendar.YEAR).toString()
+            grouped.getOrPut(yearStr) { mutableListOf() }.add(item)
+        }
+        return grouped
+    }
+
+    /**
+     * Groups media items by month (e.g. "November 2026", "October 2026") for the Months view.
+     */
+    fun groupMediaByMonth(items: List<MediaItem>): Map<String, List<MediaItem>> {
+        val cal = Calendar.getInstance()
+        val monthYearFormat = SimpleDateFormat("MMMM yyyy", Locale.ENGLISH)
+        val grouped = linkedMapOf<String, MutableList<MediaItem>>()
+        for (item in items) {
+            cal.timeInMillis = item.dateTakenMs
+            val monthStr = monthYearFormat.format(Date(item.dateTakenMs))
+            grouped.getOrPut(monthStr) { mutableListOf() }.add(item)
+        }
+        return grouped
+    }
+
+    /**
      * Formats raw bytes into a human-readable storage string (e.g., "14.2 MB").
      */
     fun formatStorageSize(bytes: Long): String {

@@ -115,3 +115,4 @@ enum class ExportFormat(val extension: String, val mimeType: String) {
     PNG("png", "image/png"),
     WEBP("webp", "image/webp")
 }
+

@@ -345,4 +345,12 @@ class MediaRepository(
     fun groupMediaByDate(items: List<MediaItem>): Map<String, List<MediaItem>> {
         return MediaGrouping.groupMediaByDate(items)
     }
+
+    fun groupMediaByYear(items: List<MediaItem>): Map<String, List<MediaItem>> {
+        return MediaGrouping.groupMediaByYear(items)
+    }
+
+    fun groupMediaByMonth(items: List<MediaItem>): Map<String, List<MediaItem>> {
+        return MediaGrouping.groupMediaByMonth(items)
+    }
 }

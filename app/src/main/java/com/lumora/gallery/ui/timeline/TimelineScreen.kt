@@ -1,5 +1,11 @@
 package com.lumora.gallery.ui.timeline
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -41,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -51,11 +58,14 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.lumora.gallery.data.model.MediaItem
+import com.lumora.gallery.ui.navigation.TimeScale
 import com.lumora.gallery.ui.onboarding.AlbumSelectionSheet
-import com.lumora.gallery.ui.theme.AccentGold
 import com.lumora.gallery.ui.theme.BadgeBackground
+import com.lumora.gallery.ui.theme.DarkBorder
 import com.lumora.gallery.ui.theme.DarkSurface
+import com.lumora.gallery.ui.theme.DarkSurfaceElevated
 import com.lumora.gallery.ui.theme.PureBlack
+import com.lumora.gallery.ui.theme.SoothingBlue
 import com.lumora.gallery.ui.theme.TextPrimary
 import com.lumora.gallery.ui.theme.TextSecondary
 
@@ -63,6 +73,7 @@ import com.lumora.gallery.ui.theme.TextSecondary
 fun TimelineScreen(
     viewModel: TimelineViewModel,
     onOpenSettings: () -> Unit = {},
+    onOpenSearch: () -> Unit = {},
     onItemClick: (MediaItem, List<MediaItem>) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
@@ -97,7 +108,7 @@ fun TimelineScreen(
             }
     ) {
         TimelineTopBar(
-            onSearchClick = { /* Search will be connected in milestone e */ },
+            onSearchClick = onOpenSearch,
             onMenuClick = { menuExpanded = true },
             menuExpanded = menuExpanded,
             onDismissMenu = { menuExpanded = false },
@@ -115,7 +126,7 @@ fun TimelineScreen(
             when (val state = uiState) {
                 is TimelineUiState.Loading -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = AccentGold)
+                        CircularProgressIndicator(color = SoothingBlue)
                     }
                 }
 
@@ -147,13 +158,43 @@ fun TimelineScreen(
                     val allItems = remember(state.groupedMedia) {
                         state.groupedMedia.values.flatten()
                     }
-                    MediaGrid(
-                        groupedMedia = state.groupedMedia,
-                        columns = gridColumns,
-                        onItemClick = { clickedItem ->
-                            onItemClick(clickedItem, allItems)
+
+                    AnimatedContent(
+                        targetState = state.timeScale,
+                        transitionSpec = {
+                            fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) togetherWith
+                                    fadeOut(animationSpec = spring(stiffness = Spring.StiffnessMediumLow))
+                        },
+                        label = "timeline_scale_transition"
+                    ) { currentScale ->
+                        when (currentScale) {
+                            TimeScale.YEARS -> {
+                                YearsView(
+                                    groupedMedia = state.groupedMedia,
+                                    onItemClick = { clickedItem ->
+                                        onItemClick(clickedItem, allItems)
+                                    }
+                                )
+                            }
+                            TimeScale.MONTHS -> {
+                                MonthsView(
+                                    groupedMedia = state.groupedMedia,
+                                    onItemClick = { clickedItem ->
+                                        onItemClick(clickedItem, allItems)
+                                    }
+                                )
+                            }
+                            TimeScale.DAYS -> {
+                                MediaGrid(
+                                    groupedMedia = state.groupedMedia,
+                                    columns = gridColumns,
+                                    onItemClick = { clickedItem ->
+                                        onItemClick(clickedItem, allItems)
+                                    }
+                                )
+                            }
                         }
-                    )
+                    }
                 }
             }
         }
@@ -214,7 +255,7 @@ private fun TimelineTopBar(
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = onDismissMenu,
-                    modifier = Modifier.background(DarkSurface)
+                    modifier = Modifier.background(DarkSurfaceElevated)
                 ) {
                     DropdownMenuItem(
                         text = { Text("Photos tab sources", color = TextPrimary) },
@@ -230,6 +271,190 @@ private fun TimelineTopBar(
     }
 }
 
+/**
+ * Years View (Matching Screenshot 4)
+ * Displays large cover hero cards with big year title (e.g. "2025") overlaid.
+ */
+@Composable
+private fun YearsView(
+    groupedMedia: Map<String, List<MediaItem>>,
+    onItemClick: (MediaItem) -> Unit
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(1),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        groupedMedia.forEach { (year, items) ->
+            val heroItem = items.firstOrNull()
+            if (heroItem != null) {
+                item(key = "year_$year") {
+                    YearCoverCard(
+                        year = year,
+                        heroItem = heroItem,
+                        photoCount = items.size,
+                        onClick = { onItemClick(heroItem) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun YearCoverCard(
+    year: String,
+    heroItem: MediaItem,
+    photoCount: Int,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(340.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(DarkSurfaceElevated)
+            .clickable(onClick = onClick)
+    ) {
+        AsyncImage(
+            model = ImageRequest.Builder(context)
+                .data(heroItem.uri)
+                .crossfade(true)
+                .build(),
+            contentDescription = year,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
+
+        // Gradient overlay for contrast
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.6f),
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.7f)
+                        )
+                    )
+                )
+        )
+
+        // Year Title at top-left (e.g. "2025" like Screenshot 4)
+        Text(
+            text = year,
+            color = Color.White,
+            fontSize = 38.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(20.dp)
+        )
+
+        // Photo count badge at bottom-right
+        Text(
+            text = "$photoCount items",
+            color = Color.White.copy(alpha = 0.85f),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(20.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(BadgeBackground)
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+        )
+    }
+}
+
+/**
+ * Months View
+ * 2-column grid of month cover cards (e.g. "November 2026").
+ */
+@Composable
+private fun MonthsView(
+    groupedMedia: Map<String, List<MediaItem>>,
+    onItemClick: (MediaItem) -> Unit
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        groupedMedia.forEach { (monthName, items) ->
+            val heroItem = items.firstOrNull()
+            if (heroItem != null) {
+                item(key = "month_$monthName") {
+                    MonthCoverCard(
+                        monthName = monthName,
+                        heroItem = heroItem,
+                        photoCount = items.size,
+                        onClick = { onItemClick(heroItem) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MonthCoverCard(
+    monthName: String,
+    heroItem: MediaItem,
+    photoCount: Int,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(DarkSurfaceElevated)
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .background(DarkSurface)
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(heroItem.uri)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = monthName,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = monthName,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "$photoCount photos",
+                fontSize = 12.sp,
+                color = TextSecondary
+            )
+        }
+    }
+}
+
+/**
+ * Days View: Standard date-grouped timeline (Matching Screenshot 2)
+ */
 @Composable
 private fun MediaGrid(
     groupedMedia: Map<String, List<MediaItem>>,
@@ -247,10 +472,10 @@ private fun MediaGrid(
             item(span = { GridItemSpan(columns) }) {
                 Text(
                     text = header,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
                 )
             }
 
@@ -297,20 +522,21 @@ private fun MediaGridItem(
                     .padding(4.dp)
                     .clip(RoundedCornerShape(4.dp))
                     .background(BadgeBackground)
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                    .padding(horizontal = 5.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = Icons.Rounded.PlayArrow,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(12.dp)
+                    modifier = Modifier.size(11.dp)
                 )
+                Spacer(modifier = Modifier.size(2.dp))
                 Text(
                     text = item.formattedDuration,
                     color = Color.White,
                     fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }

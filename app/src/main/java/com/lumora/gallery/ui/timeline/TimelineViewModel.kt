@@ -7,6 +7,7 @@ import com.lumora.gallery.data.model.Album
 import com.lumora.gallery.data.model.MediaItem
 import com.lumora.gallery.data.preferences.PreferencesRepository
 import com.lumora.gallery.data.repository.MediaRepository
+import com.lumora.gallery.ui.navigation.TimeScale
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -14,7 +15,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -22,7 +22,8 @@ sealed interface TimelineUiState {
     object Loading : TimelineUiState
     data class Success(
         val groupedMedia: Map<String, List<MediaItem>>,
-        val totalCount: Int
+        val totalCount: Int,
+        val timeScale: TimeScale = TimeScale.DAYS
     ) : TimelineUiState
     object Empty : TimelineUiState
 }
@@ -42,21 +43,37 @@ class TimelineViewModel(
     val gridColumns: StateFlow<Int> = preferencesRepository.gridColumnsFlow
         .stateIn(viewModelScope, SharingStarted.Eagerly, 3)
 
+    private val _timeScale = MutableStateFlow(TimeScale.DAYS)
+    val timeScale: StateFlow<TimeScale> = _timeScale.asStateFlow()
+
+    private val _isTimeScaleMode = MutableStateFlow(false)
+    val isTimeScaleMode: StateFlow<Boolean> = _isTimeScaleMode.asStateFlow()
+
     private val _allAlbums = MutableStateFlow<List<Album>>(emptyList())
     val allAlbums: StateFlow<List<Album>> = _allAlbums.asStateFlow()
 
     private val _showAlbumPicker = MutableStateFlow(false)
     val showAlbumPicker: StateFlow<Boolean> = _showAlbumPicker.asStateFlow()
 
-    // Query media flow dynamically whenever selectedBucketIds change
-    val uiState: StateFlow<TimelineUiState> = selectedBucketIds.flatMapLatest { bucketIds ->
-        mediaRepository.getMediaFlow(bucketIds)
-    }.combine(gridColumns) { items, _ ->
+    // Query media flow dynamically whenever selectedBucketIds, timeScale or gridColumns change
+    val uiState: StateFlow<TimelineUiState> = combine(
+        selectedBucketIds.flatMapLatest { bucketIds -> mediaRepository.getMediaFlow(bucketIds) },
+        _timeScale,
+        gridColumns
+    ) { items, currentScale, _ ->
         if (items.isEmpty()) {
             TimelineUiState.Empty
         } else {
-            val grouped = mediaRepository.groupMediaByDate(items)
-            TimelineUiState.Success(groupedMedia = grouped, totalCount = items.size)
+            val grouped = when (currentScale) {
+                TimeScale.YEARS -> mediaRepository.groupMediaByYear(items)
+                TimeScale.MONTHS -> mediaRepository.groupMediaByMonth(items)
+                TimeScale.DAYS -> mediaRepository.groupMediaByDate(items)
+            }
+            TimelineUiState.Success(
+                groupedMedia = grouped,
+                totalCount = items.size,
+                timeScale = currentScale
+            )
         }
     }.stateIn(viewModelScope, SharingStarted.Lazily, TimelineUiState.Loading)
 
@@ -69,8 +86,6 @@ class TimelineViewModel(
             val albums = mediaRepository.getAllAlbums()
             _allAlbums.value = albums
 
-            // Check if onboarding is needed: if onboarding not completed and no buckets selected
-            val onboardingDone = preferencesRepository.onboardingCompletedFlow
             // If user hasn't selected any buckets yet, automatically preselect Camera
             if (selectedBucketIds.value.isEmpty()) {
                 val cameraBucket = albums.firstOrNull { it.isCamera }
@@ -79,6 +94,22 @@ class TimelineViewModel(
                 }
             }
         }
+    }
+
+    fun setTimeScale(scale: TimeScale) {
+        _timeScale.value = scale
+    }
+
+    fun toggleTimeScaleMode() {
+        _isTimeScaleMode.value = !_isTimeScaleMode.value
+        if (!_isTimeScaleMode.value) {
+            _timeScale.value = TimeScale.DAYS
+        }
+    }
+
+    fun exitTimeScaleMode() {
+        _isTimeScaleMode.value = false
+        _timeScale.value = TimeScale.DAYS
     }
 
     fun openAlbumPicker() {
