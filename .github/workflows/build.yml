@@ -47,27 +47,29 @@ jobs:
       # Step 4: Bootstrap Gradle Wrapper if not committed as binary
       - name: Generate Gradle Wrapper
         run: |
-          echo "=== Diagnostic Info ==="
-          echo "PATH: $PATH"
-          which gradle || echo "which gradle failed"
-          type gradle || echo "type gradle failed"
+          echo "=== Diagnostic Info ===" > /tmp/bootstrap.log
+          echo "PATH: $PATH" >> /tmp/bootstrap.log
+          echo "Current dir: $(pwd)" >> /tmp/bootstrap.log
+          which gradle >> /tmp/bootstrap.log 2>&1 || true
           
-          # Attempt bootstrap using available tools
           if [ ! -f "gradlew" ]; then
-            if command -v gradle >/dev/null 2>&1; then
-              echo "Using installed gradle binary..."
-              gradle wrapper --gradle-version 8.11.1
-            else
-              echo "Downloading official gradle wrapper files..."
-              mkdir -p gradle/wrapper
-              curl -sSL "https://services.gradle.org/distributions/gradle-8.11.1-bin.zip" -o /tmp/gradle.zip
-              unzip -q -o /tmp/gradle.zip -d /tmp/
-              /tmp/gradle-8.11.1/bin/gradle wrapper --gradle-version 8.11.1
-              rm -f /tmp/gradle.zip
-            fi
+            echo "Downloading Gradle 8.11.1..." >> /tmp/bootstrap.log
+            curl -sSL "https://services.gradle.org/distributions/gradle-8.11.1-bin.zip" -o /tmp/gradle.zip >> /tmp/bootstrap.log 2>&1
+            unzip -q -o /tmp/gradle.zip -d /tmp/ >> /tmp/bootstrap.log 2>&1
+            echo "Running gradle wrapper command..." >> /tmp/bootstrap.log
+            /tmp/gradle-8.11.1/bin/gradle wrapper --gradle-version 8.11.1 >> /tmp/bootstrap.log 2>&1 || true
+            rm -f /tmp/gradle.zip
           fi
-          ls -la gradlew gradle/wrapper/
-          chmod +x gradlew
+          ls -la >> /tmp/bootstrap.log
+          chmod +x gradlew >> /tmp/bootstrap.log 2>&1 || true
+          cat /tmp/bootstrap.log
+
+      - name: Upload Bootstrap Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootstrap-log
+          path: /tmp/bootstrap.log
 
       # ================================================================
       # QUALITY GATE 1: Unit Tests
