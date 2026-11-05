@@ -42,7 +42,6 @@ import androidx.compose.ui.unit.sp
 import com.lumora.gallery.data.model.ExifMetadata
 import com.lumora.gallery.data.model.MediaItem
 import com.lumora.gallery.ui.theme.AccentGold
-import com.lumora.gallery.ui.theme.DarkCard
 import com.lumora.gallery.ui.theme.DarkSurface
 import com.lumora.gallery.ui.theme.TextPrimary
 import com.lumora.gallery.ui.theme.TextSecondary
