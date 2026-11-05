@@ -22,7 +22,7 @@ class MilestoneETest {
             uri = mockUri,
             displayName = "IMG_$id.jpg",
             mimeType = "image/jpeg",
-            sizeBytes = sizeBytes,
+            size = sizeBytes,
             dateTakenMs = dateTakenMs,
             dateModifiedSec = dateTakenMs / 1000,
             durationMs = 0L,

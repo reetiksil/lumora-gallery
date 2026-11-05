@@ -90,12 +90,12 @@ fun CleanupScreen(
             val all: List<MediaItem> = mediaRepository.getAllMediaItems()
 
             // 1. Large files (> 50 MB)
-            val large = all.filter { item: MediaItem -> item.sizeBytes > 50L * 1024 * 1024 }
-                .sortedByDescending { item: MediaItem -> item.sizeBytes }
+            val large = all.filter { item: MediaItem -> item.size > 50L * 1024 * 1024 }
+                .sortedByDescending { item: MediaItem -> item.size }
             largeFiles.addAll(large)
 
             // 2. Duplicate detection by size & dimension
-            val sizeMap: Map<Long, List<MediaItem>> = all.groupBy { item: MediaItem -> item.sizeBytes }
+            val sizeMap: Map<Long, List<MediaItem>> = all.groupBy { item: MediaItem -> item.size }
             val duplicates = mutableListOf<MediaItem>()
             for (group in sizeMap.values) {
                 if (group.size > 1) {
@@ -213,7 +213,7 @@ fun CleanupScreen(
                     }
                 }
             } else {
-                val totalBytes = currentList.sumOf { item: MediaItem -> item.sizeBytes }
+                val totalBytes = currentList.sumOf { item: MediaItem -> item.size }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -295,7 +295,7 @@ private fun CleanupItemRow(
                 )
                 Spacer(modifier = Modifier.height(3.dp))
                 Text(
-                    text = "${MediaGrouping.formatStorageSize(item.sizeBytes)} • ${item.bucketName}",
+                    text = "${MediaGrouping.formatStorageSize(item.size)} • ${item.bucketName}",
                     fontSize = 12.sp,
                     color = TextSecondary
                 )
