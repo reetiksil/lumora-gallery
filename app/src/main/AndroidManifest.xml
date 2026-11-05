@@ -17,6 +17,9 @@
     <!-- Access media location for EXIF data (only read when user views details) -->
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
 
+    <!-- Set wallpaper from viewer overflow menu -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
+
     <!-- HARD PRIVACY RULE: Zero internet permissions declared or requested -->
 
     <application

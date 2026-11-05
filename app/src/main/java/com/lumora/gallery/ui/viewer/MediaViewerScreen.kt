@@ -1,5 +1,6 @@
 package com.lumora.gallery.ui.viewer
 
+import android.annotation.SuppressLint
 import android.app.WallpaperManager
 import android.content.Context
 import android.content.Intent
@@ -355,3 +356,4 @@ private fun openWithExternalApp(context: Context, item: MediaItem) {
         context.startActivity(viewIntent)
     }
 }
+
