@@ -48,6 +48,10 @@ jobs:
       - name: Generate Gradle Wrapper
         run: |
           if [ ! -f "gradlew" ]; then
+            if ! command -v gradle >/dev/null 2>&1; then
+              echo "Installing gradle system package to bootstrap wrapper..."
+              sudo apt-get update -qq && sudo apt-get install -y -qq gradle
+            fi
             gradle wrapper --gradle-version 8.11.1
           fi
           chmod +x gradlew
