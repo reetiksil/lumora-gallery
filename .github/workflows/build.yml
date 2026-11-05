@@ -47,29 +47,14 @@ jobs:
       # Step 4: Bootstrap Gradle Wrapper if not committed as binary
       - name: Generate Gradle Wrapper
         run: |
-          echo "=== Diagnostic Info ===" > /tmp/bootstrap.log
-          echo "PATH: $PATH" >> /tmp/bootstrap.log
-          echo "Current dir: $(pwd)" >> /tmp/bootstrap.log
-          which gradle >> /tmp/bootstrap.log 2>&1 || true
-          
           if [ ! -f "gradlew" ]; then
-            echo "Downloading Gradle 8.11.1..." >> /tmp/bootstrap.log
-            curl -sSL "https://services.gradle.org/distributions/gradle-8.11.1-bin.zip" -o /tmp/gradle.zip >> /tmp/bootstrap.log 2>&1
-            unzip -q -o /tmp/gradle.zip -d /tmp/ >> /tmp/bootstrap.log 2>&1
-            echo "Running gradle wrapper command..." >> /tmp/bootstrap.log
-            /tmp/gradle-8.11.1/bin/gradle wrapper --gradle-version 8.11.1 >> /tmp/bootstrap.log 2>&1 || true
+            echo "Downloading Gradle 8.11.1 distribution..."
+            curl -sSL "https://services.gradle.org/distributions/gradle-8.11.1-bin.zip" -o /tmp/gradle.zip
+            unzip -q -o /tmp/gradle.zip -d /tmp/
+            /tmp/gradle-8.11.1/bin/gradle wrapper --gradle-version 8.11.1
             rm -f /tmp/gradle.zip
           fi
-          ls -la >> /tmp/bootstrap.log
-          chmod +x gradlew >> /tmp/bootstrap.log 2>&1 || true
-          cat /tmp/bootstrap.log
-
-      - name: Upload Bootstrap Log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bootstrap-log
-          path: /tmp/bootstrap.log
+          chmod +x gradlew
 
       # ================================================================
       # QUALITY GATE 1: Unit Tests

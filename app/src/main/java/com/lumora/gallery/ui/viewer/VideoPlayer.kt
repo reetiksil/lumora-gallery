@@ -69,7 +69,7 @@ fun VideoPlayer(
     onToggleControls: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.ContextActionContext ?: LocalContext.current
+    val context = LocalContext.current
 
     val exoPlayer = remember(uri) {
         ExoPlayer.Builder(context).build().apply {
