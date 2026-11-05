@@ -1,13 +1,20 @@
 package com.lumora.gallery
 
 import android.Manifest
+import android.app.Activity
+import android.app.PictureInPictureParams
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
+import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -22,6 +29,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,7 +44,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import com.lumora.gallery.data.model.Album
+import com.lumora.gallery.data.model.MediaItem
 import com.lumora.gallery.ui.albums.AlbumDetailScreen
 import com.lumora.gallery.ui.albums.AlbumsScreen
 import com.lumora.gallery.ui.albums.AlbumsViewModel
@@ -51,12 +62,15 @@ import com.lumora.gallery.ui.theme.TextPrimary
 import com.lumora.gallery.ui.theme.TextSecondary
 import com.lumora.gallery.ui.timeline.TimelineScreen
 import com.lumora.gallery.ui.timeline.TimelineViewModel
+import com.lumora.gallery.ui.viewer.MediaViewerScreen
+import kotlinx.coroutines.launch
 
 enum class ActiveScreen {
     MAIN_TABS,
     ALBUM_DETAIL,
     SETTINGS,
-    PHOTOS_SOURCES
+    PHOTOS_SOURCES,
+    VIEWER
 }
 
 class MainActivity : ComponentActivity() {
@@ -66,6 +80,19 @@ class MainActivity : ComponentActivity() {
     private lateinit var settingsViewModel: SettingsViewModel
 
     private var hasPermissions by mutableStateOf(false)
+    private var externalMediaList by mutableStateOf<List<MediaItem>>(emptyList())
+    private var isExternalViewIntent by mutableStateOf(false)
+    private var isPickerMode by mutableStateOf(false)
+    private var currentViewingItem by mutableStateOf<MediaItem?>(null)
+
+    // Scoped storage delete launcher for Android 11+ (API 30+)
+    private val deleteRequestLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            // MediaStore deleted the item; ContentObserver will refresh automatically
+        }
+    }
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -75,6 +102,7 @@ class MainActivity : ComponentActivity() {
         if (granted) {
             timelineViewModel.loadAlbums()
             albumsViewModel.loadAlbums()
+            handleIncomingIntent(intent)
         }
     }
 
@@ -99,20 +127,105 @@ class MainActivity : ComponentActivity() {
         )[SettingsViewModel::class.java]
 
         checkInitialPermissions()
+        handleIncomingIntent(intent)
 
         setContent {
             LumoraTheme {
-                if (hasPermissions) {
+                if (hasPermissions || isExternalViewIntent) {
                     MainNavigationHost(
                         timelineViewModel = timelineViewModel,
                         albumsViewModel = albumsViewModel,
                         settingsViewModel = settingsViewModel,
-                        app = app
+                        app = app,
+                        externalMediaList = externalMediaList,
+                        isExternalViewIntent = isExternalViewIntent,
+                        isPickerMode = isPickerMode,
+                        onMediaSelectedInPicker = { selectedItem ->
+                            val resultIntent = Intent().apply {
+                                data = selectedItem.uri
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            setResult(Activity.RESULT_OK, resultIntent)
+                            finish()
+                        },
+                        onDeleteMediaItem = { itemToDelete ->
+                            requestDeleteMedia(itemToDelete)
+                        },
+                        onCurrentViewingItemChanged = { item ->
+                            currentViewingItem = item
+                        },
+                        onFinishActivity = { finish() }
                     )
                 } else {
                     PermissionRequestScreen(onRequestPermission = { requestMediaPermissions() })
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(incomingIntent: Intent?) {
+        if (incomingIntent == null) return
+        val action = incomingIntent.action ?: return
+
+        when (action) {
+            Intent.ACTION_VIEW -> {
+                val uri = incomingIntent.data
+                if (uri != null) {
+                    isExternalViewIntent = true
+                    lifecycleScope.launch {
+                        val app = application as LumoraApplication
+                        val singleItem = app.mediaRepository.getMediaItemFromUri(uri)
+                        if (singleItem != null) {
+                            val neighbors = app.mediaRepository.getNeighboringMedia(singleItem)
+                            externalMediaList = neighbors
+                            currentViewingItem = singleItem
+                        }
+                    }
+                }
+            }
+            Intent.ACTION_PICK, Intent.ACTION_GET_CONTENT -> {
+                isPickerMode = true
+            }
+        }
+    }
+
+    fun requestDeleteMedia(item: MediaItem) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val pendingIntent = MediaStore.createDeleteRequest(contentResolver, listOf(item.uri))
+            deleteRequestLauncher.launch(
+                IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+            )
+        } else {
+            try {
+                contentResolver.delete(item.uri, null, null)
+            } catch (_: Exception) {}
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Enter Picture-in-Picture mode if viewing a video
+        val item = currentViewingItem
+        if (item != null && item.isVideo && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val aspectRatio = if (item.width > 0 && item.height > 0) {
+                    val safeWidth = item.width.coerceIn(100, 4000)
+                    val safeHeight = item.height.coerceIn(100, 4000)
+                    Rational(safeWidth, safeHeight)
+                } else {
+                    Rational(16, 9)
+                }
+                val pipParams = PictureInPictureParams.Builder()
+                    .setAspectRatio(aspectRatio)
+                    .build()
+                enterPictureInPictureMode(pipParams)
+            } catch (_: Exception) {}
         }
     }
 
@@ -154,14 +267,47 @@ fun MainNavigationHost(
     timelineViewModel: TimelineViewModel,
     albumsViewModel: AlbumsViewModel,
     settingsViewModel: SettingsViewModel,
-    app: LumoraApplication
+    app: LumoraApplication,
+    externalMediaList: List<MediaItem>,
+    isExternalViewIntent: Boolean,
+    isPickerMode: Boolean,
+    onMediaSelectedInPicker: (MediaItem) -> Unit,
+    onDeleteMediaItem: (MediaItem) -> Unit,
+    onCurrentViewingItemChanged: (MediaItem?) -> Unit,
+    onFinishActivity: () -> Unit
 ) {
-    var activeScreen by remember { mutableStateOf(ActiveScreen.MAIN_TABS) }
+    var activeScreen by remember {
+        mutableStateOf(if (isExternalViewIntent && externalMediaList.isNotEmpty()) ActiveScreen.VIEWER else ActiveScreen.MAIN_TABS)
+    }
     var currentTab by remember { mutableStateOf(NavTab.PHOTOS) }
     var selectedAlbumForDetail by remember { mutableStateOf<Album?>(null) }
 
+    var viewerMediaList by remember { mutableStateOf<List<MediaItem>>(externalMediaList) }
+    var viewerInitialIndex by remember { mutableStateOf(0) }
+
+    val eraseExifOnShare by app.preferencesRepository.eraseExifOnShareFlow.collectAsState(initial = true)
+    val autoplayVideosMuted by app.preferencesRepository.autoplayVideosMutedFlow.collectAsState(initial = true)
+
+    // Trigger viewer if external media list resolved after launch
+    LaunchedEffect(externalMediaList) {
+        if (isExternalViewIntent && externalMediaList.isNotEmpty()) {
+            viewerMediaList = externalMediaList
+            viewerInitialIndex = 0
+            activeScreen = ActiveScreen.VIEWER
+        }
+    }
+
     BackHandler(enabled = activeScreen != ActiveScreen.MAIN_TABS) {
         when (activeScreen) {
+            ActiveScreen.VIEWER -> {
+                if (isExternalViewIntent) {
+                    onFinishActivity()
+                } else if (selectedAlbumForDetail != null) {
+                    activeScreen = ActiveScreen.ALBUM_DETAIL
+                } else {
+                    activeScreen = ActiveScreen.MAIN_TABS
+                }
+            }
             ActiveScreen.PHOTOS_SOURCES -> activeScreen = ActiveScreen.SETTINGS
             ActiveScreen.SETTINGS -> activeScreen = ActiveScreen.MAIN_TABS
             ActiveScreen.ALBUM_DETAIL -> activeScreen = ActiveScreen.MAIN_TABS
@@ -171,23 +317,35 @@ fun MainNavigationHost(
 
     when (activeScreen) {
         ActiveScreen.MAIN_TABS -> {
+            onCurrentViewingItemChanged(null)
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
                 containerColor = PureBlack,
                 bottomBar = {
-                    FloatingNavBar(
-                        currentTab = currentTab,
-                        onTabSelected = { currentTab = it },
-                        onToggleGridDensity = { timelineViewModel.cycleGridColumns() },
-                        onOpenFilter = { timelineViewModel.openAlbumPicker() }
-                    )
+                    if (!isPickerMode) {
+                        FloatingNavBar(
+                            currentTab = currentTab,
+                            onTabSelected = { currentTab = it },
+                            onToggleGridDensity = { timelineViewModel.cycleGridColumns() },
+                            onOpenFilter = { timelineViewModel.openAlbumPicker() }
+                        )
+                    }
                 }
             ) { padding ->
                 Box(modifier = Modifier.fillMaxSize().padding(padding)) {
                     if (currentTab == NavTab.PHOTOS) {
                         TimelineScreen(
                             viewModel = timelineViewModel,
-                            onOpenSettings = { activeScreen = ActiveScreen.SETTINGS }
+                            onOpenSettings = { activeScreen = ActiveScreen.SETTINGS },
+                            onItemClick = { item, allItems ->
+                                if (isPickerMode) {
+                                    onMediaSelectedInPicker(item)
+                                } else {
+                                    viewerMediaList = allItems
+                                    viewerInitialIndex = allItems.indexOf(item).coerceAtLeast(0)
+                                    activeScreen = ActiveScreen.VIEWER
+                                }
+                            }
                         )
                     } else {
                         AlbumsScreen(
@@ -203,17 +361,54 @@ fun MainNavigationHost(
         }
 
         ActiveScreen.ALBUM_DETAIL -> {
+            onCurrentViewingItemChanged(null)
             selectedAlbumForDetail?.let { album ->
                 AlbumDetailScreen(
                     album = album,
                     mediaRepository = app.mediaRepository,
                     onBackClick = { activeScreen = ActiveScreen.MAIN_TABS },
-                    onItemClick = { /* Viewer opens in milestone c */ }
+                    onItemClick = { item, allAlbumItems ->
+                        if (isPickerMode) {
+                            onMediaSelectedInPicker(item)
+                        } else {
+                            viewerMediaList = allAlbumItems
+                            viewerInitialIndex = allAlbumItems.indexOf(item).coerceAtLeast(0)
+                            activeScreen = ActiveScreen.VIEWER
+                        }
+                    }
                 )
             }
         }
 
+        ActiveScreen.VIEWER -> {
+            MediaViewerScreen(
+                mediaList = viewerMediaList,
+                initialIndex = viewerInitialIndex,
+                onBackClick = {
+                    if (isExternalViewIntent) {
+                        onFinishActivity()
+                    } else if (selectedAlbumForDetail != null) {
+                        activeScreen = ActiveScreen.ALBUM_DETAIL
+                    } else {
+                        activeScreen = ActiveScreen.MAIN_TABS
+                    }
+                },
+                onDeleteMedia = { item ->
+                    onDeleteMediaItem(item)
+                    // Remove locally from viewer list
+                    viewerMediaList = viewerMediaList.filter { it.id != item.id }
+                    if (viewerMediaList.isEmpty()) {
+                        activeScreen = ActiveScreen.MAIN_TABS
+                    }
+                },
+                onEditMedia = { /* Editor launches in milestone d */ },
+                eraseExifOnShare = eraseExifOnShare,
+                autoplayVideosMuted = autoplayVideosMuted
+            )
+        }
+
         ActiveScreen.SETTINGS -> {
+            onCurrentViewingItemChanged(null)
             SettingsScreen(
                 viewModel = settingsViewModel,
                 onBackClick = { activeScreen = ActiveScreen.MAIN_TABS },
@@ -222,6 +417,7 @@ fun MainNavigationHost(
         }
 
         ActiveScreen.PHOTOS_SOURCES -> {
+            onCurrentViewingItemChanged(null)
             PhotosSourcesScreen(
                 viewModel = settingsViewModel,
                 preferencesRepository = app.preferencesRepository,

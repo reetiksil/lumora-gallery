@@ -231,6 +231,87 @@ class MediaRepository(
     }
 
     /**
+     * Resolves a single MediaItem from an external Uri (e.g. ACTION_VIEW from camera or file manager).
+     */
+    suspend fun getMediaItemFromUri(uri: Uri): MediaItem? = withContext(Dispatchers.IO) {
+        val mimeType = contentResolver.getType(uri) ?: if (uri.toString().contains("video", ignoreCase = true)) "video/mp4" else "image/jpeg"
+
+        try {
+            contentResolver.query(uri, mediaProjection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idCol = cursor.getColumnIndex(MediaStore.Files.FileColumns._ID)
+                    val nameCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.DISPLAY_NAME)
+                    val mimeCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.MIME_TYPE)
+                    val sizeCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.SIZE)
+                    val dateTakenCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.DATE_TAKEN)
+                    val dateModCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.DATE_MODIFIED)
+                    val durCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.DURATION)
+                    val widthCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.WIDTH)
+                    val heightCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.HEIGHT)
+                    val bucketIdCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.BUCKET_ID)
+                    val bucketNameCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.BUCKET_DISPLAY_NAME)
+
+                    val id = if (idCol != -1) cursor.getLong(idCol) else uri.hashCode().toLong()
+                    val displayName = if (nameCol != -1) cursor.getString(nameCol) ?: "Media" else "Media"
+                    val resolvedMime = if (mimeCol != -1) cursor.getString(mimeCol) ?: mimeType else mimeType
+                    val size = if (sizeCol != -1) cursor.getLong(sizeCol) else 0L
+                    val dateTaken = if (dateTakenCol != -1) cursor.getLong(dateTakenCol) else System.currentTimeMillis()
+                    val dateModified = if (dateModCol != -1) cursor.getLong(dateModCol) else 0L
+                    val duration = if (durCol != -1) cursor.getLong(durCol) else 0L
+                    val width = if (widthCol != -1) cursor.getInt(widthCol) else 0
+                    val height = if (heightCol != -1) cursor.getInt(heightCol) else 0
+                    val bucketId = if (bucketIdCol != -1) cursor.getString(bucketIdCol) ?: "" else ""
+                    val bucketName = if (bucketNameCol != -1) cursor.getString(bucketNameCol) ?: "" else ""
+
+                    return@withContext MediaItem(
+                        id = id,
+                        uri = uri,
+                        displayName = displayName,
+                        mimeType = resolvedMime,
+                        size = size,
+                        dateTakenMs = dateTaken,
+                        dateModifiedSec = dateModified,
+                        durationMs = duration,
+                        width = width,
+                        height = height,
+                        bucketId = bucketId,
+                        bucketName = bucketName
+                    )
+                }
+            }
+        } catch (_: Exception) {}
+
+        // Fallback for secure or limited-scope URIs where cursor query might fail
+        return@withContext MediaItem(
+            id = uri.hashCode().toLong(),
+            uri = uri,
+            displayName = uri.lastPathSegment ?: "Media",
+            mimeType = mimeType,
+            size = 0L,
+            dateTakenMs = System.currentTimeMillis(),
+            dateModifiedSec = System.currentTimeMillis() / 1000,
+            durationMs = 0L,
+            width = 0,
+            height = 0,
+            bucketId = "",
+            bucketName = ""
+        )
+    }
+
+    /**
+     * Attempts to query neighboring media in the same bucket so swiping works immediately.
+     */
+    suspend fun getNeighboringMedia(item: MediaItem): List<MediaItem> = withContext(Dispatchers.IO) {
+        if (item.bucketId.isBlank()) return@withContext listOf(item)
+        val albumItems = queryMedia(setOf(item.bucketId), SortOrder.DATE_TAKEN_DESC)
+        if (albumItems.isEmpty() || albumItems.none { it.id == item.id || it.uri == item.uri }) {
+            listOf(item)
+        } else {
+            albumItems
+        }
+    }
+
+    /**
      * Calculates the on-disk cache size consumed by Coil thumbnails.
      */
     suspend fun getDiskCacheSizeBytes(): Long = withContext(Dispatchers.IO) {

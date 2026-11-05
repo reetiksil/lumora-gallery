@@ -48,12 +48,14 @@ import com.lumora.gallery.ui.theme.PureBlack
 import com.lumora.gallery.ui.theme.TextPrimary
 import com.lumora.gallery.ui.theme.TextSecondary
 
+import androidx.compose.runtime.remember
+
 @Composable
 fun AlbumDetailScreen(
     album: Album,
     mediaRepository: MediaRepository,
     onBackClick: () -> Unit,
-    onItemClick: (MediaItem) -> Unit,
+    onItemClick: (MediaItem, List<MediaItem>) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val itemsFlow = remember(album.bucketId) {
@@ -112,7 +114,7 @@ fun AlbumDetailScreen(
                         modifier = Modifier
                             .aspectRatio(1f)
                             .background(DarkSurface)
-                            .clickable { onItemClick(item) }
+                            .clickable { onItemClick(item, items) }
                     ) {
                         AsyncImage(
                             model = item.uri,

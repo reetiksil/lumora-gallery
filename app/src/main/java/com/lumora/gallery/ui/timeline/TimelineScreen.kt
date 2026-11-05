@@ -63,6 +63,7 @@ import com.lumora.gallery.ui.theme.TextSecondary
 fun TimelineScreen(
     viewModel: TimelineViewModel,
     onOpenSettings: () -> Unit = {},
+    onItemClick: (MediaItem, List<MediaItem>) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -143,10 +144,15 @@ fun TimelineScreen(
                 }
 
                 is TimelineUiState.Success -> {
+                    val allItems = remember(state.groupedMedia) {
+                        state.groupedMedia.values.flatten()
+                    }
                     MediaGrid(
                         groupedMedia = state.groupedMedia,
                         columns = gridColumns,
-                        onItemClick = { /* Viewer opens in milestone c */ }
+                        onItemClick = { clickedItem ->
+                            onItemClick(clickedItem, allItems)
+                        }
                     )
                 }
             }

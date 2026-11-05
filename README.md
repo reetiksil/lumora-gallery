@@ -16,6 +16,18 @@ Built from first principles for users who are exhausted by stock gallery bloat. 
 
 ---
 
+## 📱 How to Set Lumora as Your Default Gallery
+
+On ColorOS / OxygenOS / HyperOS / Stock Android:
+1. Open phone **Settings** → **Apps** (or **App Management**).
+2. Tap **Default Apps**.
+3. Tap **Gallery** (or **Photos**).
+4. Select **Lumora**.
+
+Now, when you take a photo in your stock camera app and tap the circular preview thumbnail, Android instantly launches Lumora's high-speed viewer with swipe access to your recent camera photos!
+
+---
+
 ## 🛠️ Getting Started Without Android Studio
 
 You do **not** need a high-end laptop, Android Studio, or an emulator. All compilation, unit tests, lint analysis, and APK packaging happen in the cloud on GitHub's fast runners.
@@ -26,69 +38,71 @@ Open your terminal (PowerShell, Command Prompt, or bash) and verify Git and Java
 git --version
 javac -version
 ```
-- **Java Check**: If `javac -version` returns a version (e.g. `javac 17` or `javac 25`), you have a full Java compiler. Even if you only have a JRE or a different JDK version, **GitHub Actions explicitly provisions JDK 17 for all builds**, ensuring 100% reproducible environments.
+- **Java Check**: If `javac -version` returns a version (e.g. `javac 17` or `javac 21`), you have a full Java compiler. Even if you only have a JRE or a different JDK version, **GitHub Actions explicitly provisions JDK 17 for all builds**, ensuring 100% reproducible environments.
 - **VS Code**: Edit code in [VS Code](https://code.visualstudio.com/) with syntax highlighting.
 
-### 2. Push Code to GitHub
-On your local machine in your `lumora` project directory:
+### 2. Enable GitHub Actions on Your Repository
+If you just created the repository or Actions has not run yet:
+1. Go to your repository on GitHub: `https://github.com/reetiksil/lumora-gallery/actions`
+2. If GitHub shows **"Workflows aren't being run on this repository"**, click the green button: **"I understand my workflows, go ahead and enable them"**.
+3. Now every `git push` to `main` will automatically build your app and test it!
+
+### 3. Push Code to GitHub
+On your local machine in your project directory:
 ```bash
 git add .
-git commit -m "feat(milestone-b): albums tab, settings, unit tests, and Stage 2 CI quality gates"
+git commit -m "feat(milestone-c): media viewer, video player, EXIF sheet, and default gallery intents"
 git push origin main
 ```
 
-### 3. Watch the Stage 2 Quality Gates & Build
+### 4. Watch the Stage 2 Quality Gates & Download APK
 1. Open your repository on GitHub and click the **Actions** tab.
 2. Click on the active workflow **"Lumora CI - Quality Gates & Build"**.
-3. Watch the sequential execution:
-   - **Quality Gate 1 (Unit Tests)**: Executes JVM unit tests in `app/src/test/` verifying filtering, sorting, date grouping, and cache formatting.
-   - **Quality Gate 2 (Android Lint)**: Performs static code analysis checking for security pitfalls, deprecations, and resource leaks.
-   - **Assemble Debug APK**: Packages `lumora-debug-apk` **only after both quality gates pass**.
-
-### 4. Download Reports and the APK
-In the workflow run summary under **Artifacts**:
-- **`lumora-debug-apk`**: The installable APK for your phone.
-- **`unit-test-report`**: Interactive HTML report detailing test pass/fail status and execution times.
-- **`lint-report`**: Comprehensive HTML report of Android Lint code analysis.
+3. Once completed, scroll to **Artifacts** at the bottom of the summary page to download:
+   - **`lumora-debug-apk`**: The installable APK for your phone.
+   - **`unit-test-report`**: Interactive HTML report detailing test pass/fail status and execution times.
+   - **`lint-report`**: Comprehensive HTML report of Android Lint code analysis.
 
 ---
 
 ## 📦 Project Structure
 
 ```
-lumora/
+.
 ├── .github/
 │   └── workflows/
 │       └── build.yml               # GitHub Actions CI Stage 2: Quality Gates (Tests, Lint, APK)
 ├── gradle/
 │   └── libs.versions.toml          # Centralized version catalog (all dependencies pinned)
 ├── app/
-│   ├── build.gradle.kts            # App module config (arm64-v8a, Compose, testOptions, lint)
-│   ├── proguard-rules.pro          # R8 optimizer rules
+│   ├── build.gradle.kts            # App module config (arm64-v8a, resource minification, Compose)
+│   ├── proguard-rules.pro          # R8 full-mode optimizer rules
 │   ├── src/
 │   │   ├── main/
-│   │   │   ├── AndroidManifest.xml # Scoped storage permissions, zero internet
+│   │   │   ├── AndroidManifest.xml # Scoped storage permissions, default gallery intent filters
 │   │   │   ├── res/                # Adaptive vector icons and theme colors
 │   │   │   └── java/com/lumora/gallery/
 │   │   │       ├── LumoraApplication.kt # Capped Coil disk cache (100MB), manual DI
-│   │   │       ├── MainActivity.kt      # Screen router (Photos, Albums, Detail, Settings)
+│   │   │       ├── MainActivity.kt      # Screen router, Intent handler, PiP, scoped delete
 │   │   │       ├── data/
-│   │   │       │   ├── model/           # MediaItem, Album, SortOrder, ThemeMode
+│   │   │       │   ├── model/           # MediaItem, Album, ExifMetadata, SortOrder, ThemeMode
 │   │   │       │   ├── preferences/     # DataStore repository (bucket IDs, settings)
-│   │   │       │   ├── repository/      # ContentResolver queries & cache manager
-│   │   │       │   └── util/            # Pure media filtering, sorting & date grouping
+│   │   │       │   ├── repository/      # ContentResolver queries, single-URI resolver, cache manager
+│   │   │       │   └── util/            # ExifReader, pure media filtering, sorting & date grouping
 │   │   │       └── ui/
 │   │   │           ├── theme/           # True-black AMOLED theme & typography
 │   │   │           ├── navigation/      # Floating pill bar (Photos | Albums)
 │   │   │           ├── onboarding/      # First-launch album selection sheet
 │   │   │           ├── timeline/        # Date-grouped grid, pinch zoom, duration badges
 │   │   │           ├── albums/          # Pinned cards, All Albums list, Album Detail grid
+│   │   │           ├── viewer/          # MediaViewerScreen, ZoomableImage, VideoPlayer, MediaInfoSheet
 │   │   │           └── settings/        # Photos sources, Cache manager, Sort order
 │   │   └── test/java/com/lumora/gallery/
-│   │       └── MediaGroupingTest.kt     # Unit tests for album filtering, sorting, date headers
+│   │       ├── MediaGroupingTest.kt     # Unit tests for album filtering, sorting, date headers
+│   │       └── MediaViewerTest.kt       # Unit tests for video duration, EXIF formatting & metadata
 │   ├── build.gradle.kts                 # Root build script
 │   ├── settings.gradle.kts              # Plugin repositories and project name
-│   ├── gradle.properties                # Memory limit (1g), build caching
+│   ├── gradle.properties                # Memory limit (1g), build caching, R8 full mode
 │   └── .gitignore                       # Clean exclusion rules (no binaries committed)
 ```
 
@@ -98,7 +112,7 @@ lumora/
 
 - [x] **Milestone (a)**: Core skeleton, modern permissions flow, MediaStore timeline with album filtering, and CI Stage 1 (automated debug build).
 - [x] **Milestone (b)**: Full Albums tab (pinned cards, long-press actions, album detail grid), Settings screen (Photos tab sources, cache limits, clear cache), and CI Stage 2 (Quality gates: unit tests & lint).
-- [ ] **Milestone (c)**: Instant shared-element photo/video viewer and default-app intent handlers (`ACTION_VIEW`, `ACTION_PICK`).
-- [ ] **Milestone (d)**: Built-in non-destructive photo editor (crop, adjust, filters, markup, blur brush) and video trim.
-- [ ] **Milestone (e)**: Scoped storage trash/restore, biometric private vault, natural language search, and duplicate cleaner.
-- [ ] **Milestone (f)**: R8 release optimization, arm64-only signed APK, and CI Stages 3–5 (keystore secrets, auto GitHub releases, <8MB size guard).
+- [x] **Milestone (c)**: Interactive Media Viewer (pinch/double-tap zoom, swipe down to dismiss, swipe between items, EXIF metadata sheet), Media3 video playback with transport controls & PiP, and Default Gallery intent filters (`ACTION_VIEW`, `ACTION_PICK`, `ACTION_GET_CONTENT`, `ACTION_SET_WALLPAPER`).
+- [ ] **Milestone (d)**: Built-in non-destructive photo editor (crop, rotate, filters, adjustments, markup, blur brush, bitmap pooling).
+- [ ] **Milestone (e)**: Trash with restore, private vault with biometric lock, fast search, duplicate and large-file cleanup.
+- [ ] **Milestone (f)**: Release signing, R8 release build optimization (<8 MB APK), size regression CI guards, and GitHub Releases integration.

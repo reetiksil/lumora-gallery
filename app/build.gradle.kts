@@ -12,13 +12,16 @@ android {
         applicationId = "com.lumora.gallery"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0-milestone-b"
+        versionCode = 3
+        versionName = "0.3.0-milestone-c"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // Restrict languages to English to keep APK resource size tiny (<8 MB)
+        resourceConfigurations += listOf("en")
 
         // Restrict native architecture to 64-bit ARM to keep download size tiny (<8 MB target)
         ndk {
@@ -76,7 +79,11 @@ android {
 
     packaging {
         resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += setOf(
+                "/META-INF/{AL2.0,LGPL2.1}",
+                "/META-INF/INDEX.LIST",
+                "/META-INF/*.kotlin_module"
+            )
         }
     }
 }
@@ -97,6 +104,13 @@ dependencies {
     // Image & Video thumbnail decoding via ContentResolver / Coil
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
+
+    // Ultra-lightweight Media3 ExoPlayer for video playback
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
+
+    // ExifInterface for zero-memory EXIF metadata extraction
+    implementation(libs.androidx.exifinterface)
 
     // Local tiny preference storage
     implementation(libs.androidx.datastore.preferences)
