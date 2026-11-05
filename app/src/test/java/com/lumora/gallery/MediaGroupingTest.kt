@@ -7,9 +7,12 @@ import com.lumora.gallery.data.util.MediaGrouping
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.mockito.Mockito
 import java.util.Calendar
 
 class MediaGroupingTest {
+
+    private val mockUri: Uri = Mockito.mock(Uri::class.java)
 
     private fun createDummyItem(
         id: Long,
@@ -20,7 +23,7 @@ class MediaGroupingTest {
     ): MediaItem {
         return MediaItem(
             id = id,
-            uri = Uri.EMPTY,
+            uri = mockUri,
             displayName = name,
             mimeType = "image/jpeg",
             size = 1024L * 1024L, // 1 MB

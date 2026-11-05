@@ -9,13 +9,16 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.mockito.Mockito
 
 class MediaViewerTest {
+
+    private val mockUri: Uri = Mockito.mock(Uri::class.java)
 
     private fun createVideoItem(durationMs: Long): MediaItem {
         return MediaItem(
             id = 100L,
-            uri = Uri.EMPTY,
+            uri = mockUri,
             displayName = "sample_video.mp4",
             mimeType = "video/mp4",
             size = 5L * 1024 * 1024,
@@ -32,7 +35,7 @@ class MediaViewerTest {
     private fun createImageItem(): MediaItem {
         return MediaItem(
             id = 101L,
-            uri = Uri.EMPTY,
+            uri = mockUri,
             displayName = "sample_photo.jpg",
             mimeType = "image/jpeg",
             size = 2L * 1024 * 1024,
