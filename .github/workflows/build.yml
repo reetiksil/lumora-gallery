@@ -1,34 +1,39 @@
 # ====================================================================
-# Stage 2: Continuous Integration Pipeline with Quality Gates
+# Stage 3: CI/CD Pipeline with Quality Gates, Size Budget & Releases
 # ====================================================================
-# Concepts introduced in Stage 2:
+# Concepts:
 # 1. Quality Gates: Automated checks (tests + linting) that guarantee code
-#    correctness and style BEFORE building the final output. If any test
-#    or lint error fails, the pipeline aborts immediately.
+#    correctness and style BEFORE building the final output.
 # 2. Automated Unit Tests: Runs JVM test suites without needing a device.
 # 3. Static Code Analysis (Lint): Scans for security bugs, performance
 #    pitfalls, and missing resources across Android configurations.
-# 4. Report Artifacts: Saves interactive HTML test and lint reports as
-#    downloadable artifacts so you can inspect failures directly.
+# 4. R8 Full-Mode Optimizer: Minifies bytecode and strips unreferenced resources.
+# 5. Size Regression CI Guard: Strictly fails the build if release APK > 8 MB.
+# 6. Automated GitHub Releases: Attaches release APKs on git tags (v*).
 # ====================================================================
-name: Lumora CI - Quality Gates & Build
+name: Lumora CI - Quality Gates & Release
 
 on:
   push:
     branches: [ "main" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
   build:
-    name: Test, Lint & Assemble
+    name: Test, Lint, Assemble & Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       # Step 1: Checkout git repository
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Step 2: Set up JDK 17 (Temurin distribution)
       - name: Set up JDK 17
@@ -59,14 +64,12 @@ jobs:
 
       # ================================================================
       # QUALITY GATE 1: Unit Tests
-      # Compiles and runs all JUnit unit tests in app/src/test/
       # ================================================================
       - name: Run Unit Tests
         run: ./gradlew testDebugUnitTest --stacktrace
 
-      # Upload Test Results Artifact (browsable HTML test reports)
       - name: Upload Test Report Artifact
-        if: always() # Run even if tests fail so you can see why!
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: unit-test-report
@@ -75,12 +78,10 @@ jobs:
 
       # ================================================================
       # QUALITY GATE 2: Android Lint (Static Analysis)
-      # Inspects code for potential bugs, resource leaks, and API deprecations
       # ================================================================
       - name: Run Android Lint
         run: ./gradlew lintDebug --stacktrace
 
-      # Upload Lint Report Artifact
       - name: Upload Lint Report Artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -90,16 +91,64 @@ jobs:
           retention-days: 7
 
       # ================================================================
-      # BUILD STEP: Assemble Debug APK
-      # Only runs if both Quality Gate 1 and Quality Gate 2 PASS!
+      # BUILD STEP: Assemble Debug and R8-Optimized Release APKs
       # ================================================================
-      - name: Assemble Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+      - name: Assemble Debug & Release APKs
+        run: ./gradlew assembleDebug assembleRelease --stacktrace
 
-      # Step 7: Upload APK Artifact for phone installation
+      # ================================================================
+      # QUALITY GATE 3: Size Budget Regression Guard (< 8 MB Cap)
+      # ================================================================
+      - name: Verify Release APK Size Budget (< 8 MB)
+        run: |
+          RELEASE_APK=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+          if [ -z "$RELEASE_APK" ] || [ ! -f "$RELEASE_APK" ]; then
+            echo "❌ ERROR: Release APK file not found!"
+            exit 1
+          fi
+
+          APK_SIZE=$(stat -c%s "$RELEASE_APK")
+          MAX_SIZE=$((8 * 1024 * 1024))
+          HUMAN_SIZE=$(numfmt --to=iec-i --suffix=B "$APK_SIZE" 2>/dev/null || echo "$((APK_SIZE / 1024 / 1024)) MB")
+
+          echo "=============================================="
+          echo "📦 Release APK: $RELEASE_APK"
+          echo "📊 APK File Size: $APK_SIZE bytes ($HUMAN_SIZE)"
+          echo "🎯 Strict Budget: $MAX_SIZE bytes (8 MiB)"
+          echo "=============================================="
+
+          if [ "$APK_SIZE" -gt "$MAX_SIZE" ]; then
+            echo "❌ ERROR: Release APK exceeds strict 8 MB budget!"
+            exit 1
+          fi
+          echo "✅ PASS: Release APK satisfies strict < 8 MB size budget constraint."
+
+      # Upload Debug APK Artifact
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: lumora-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 14
+
+      # Upload Release APK Artifact
+      - name: Upload Release APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumora-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      # ================================================================
+      # GITHUB RELEASES INTEGRATION (Triggers on tag push: v*)
+      # ================================================================
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/debug/*.apk
+          generate_release_notes: true
+          draft: false
+          prerelease: false

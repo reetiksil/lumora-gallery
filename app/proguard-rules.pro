@@ -18,3 +18,6 @@
     <fields>;
     <methods>;
 }
+
+# Lumora Data Models
+-keep class com.lumora.gallery.data.model.** { *; }

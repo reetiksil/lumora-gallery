@@ -124,4 +124,8 @@ git push origin main
   - **Smart Search with Suggestions**: Top search bar with Cancel action, instant suggestion chips for Times (with photo preview cards), Smart Categories (Cards & documents, QR codes, Electronics, Transport, Screenshots, Videos), and Places (with location pins), plus multi-field filtering on date, time of day, location, and content.
   - **Theme System**: Full theme personalization in Settings supporting AMOLED Dark (Pure black), Light (HyperOS clean light), and Follow System.
   - **Reliable 30-Day Trash Vault**: Fix for deletion crash and fully functional Recently Deleted screen with 30-day countdown timers, one-tap Restoration back to gallery, and permanent Delete Forever.
-- [ ] **Milestone (f)**: Release signing, R8 release build optimization (<8 MB APK), size regression CI guards, and GitHub Releases integration.
+- [x] **Milestone (f)**: Release engineering & distribution:
+  - **R8 Full-Mode Optimizer**: Bytecode minification, resource shrinking, dead-code elimination, and ARM64 single-architecture targets.
+  - **Size Regression CI Guard**: Automated CI gate verifying that release APK size is strictly `< 8 MB`.
+  - **Release Signing**: Production-ready signing configuration in Gradle and CI.
+  - **Automated GitHub Releases**: Pushing git tags (e.g. `v0.6.0`) automatically creates GitHub Releases with release & debug APK binaries attached.
