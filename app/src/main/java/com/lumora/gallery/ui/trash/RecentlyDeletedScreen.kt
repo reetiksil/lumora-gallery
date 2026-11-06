@@ -1,6 +1,6 @@
 package com.lumora.gallery.ui.trash
 
-import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,20 +26,26 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,7 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import com.lumora.gallery.data.model.MediaItem
+import com.lumora.gallery.LumoraApplication
 import com.lumora.gallery.ui.theme.DarkBorder
 import com.lumora.gallery.ui.theme.DarkSurface
 import com.lumora.gallery.ui.theme.DarkSurfaceElevated
@@ -62,6 +68,7 @@ import com.lumora.gallery.ui.theme.SoftRed
 import com.lumora.gallery.ui.theme.SoothingBlue
 import com.lumora.gallery.ui.theme.TextPrimary
 import com.lumora.gallery.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
 import java.io.File
 
 data class TrashedItem(
@@ -77,36 +84,34 @@ data class TrashedItem(
         }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecentlyDeletedScreen(
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val app = context.applicationContext as LumoraApplication
+    val trashRepo = app.trashRepository
+    val scope = rememberCoroutineScope()
+
     val trashedItems = remember { mutableStateListOf<TrashedItem>() }
     var isLoading by remember { mutableStateOf(true) }
+    var selectedItemForAction by remember { mutableStateOf<TrashedItem?>(null) }
+    var showEmptyTrashDialog by remember { mutableStateOf(false) }
 
-    fun loadTrash() {
-        isLoading = true
-        val trashDir = context.filesDir.resolve("trash_bin")
-        if (!trashDir.exists()) {
-            trashDir.mkdirs()
+    fun refreshTrash() {
+        scope.launch {
+            isLoading = true
+            val items = trashRepo.getTrashedItems()
+            trashedItems.clear()
+            trashedItems.addAll(items)
+            isLoading = false
         }
-        trashedItems.clear()
-        trashDir.listFiles()?.filter { it.isFile }?.forEach { f ->
-            trashedItems.add(
-                TrashedItem(
-                    file = f,
-                    displayName = f.name,
-                    deletedTimestamp = f.lastModified()
-                )
-            )
-        }
-        isLoading = false
     }
 
     LaunchedEffect(Unit) {
-        loadTrash()
+        refreshTrash()
     }
 
     Column(
@@ -141,10 +146,7 @@ fun RecentlyDeletedScreen(
             }
 
             if (trashedItems.isNotEmpty()) {
-                TextButton(onClick = {
-                    trashedItems.forEach { it.file.delete() }
-                    trashedItems.clear()
-                }) {
+                TextButton(onClick = { showEmptyTrashDialog = true }) {
                     Text("Empty Trash", color = SoftRed, fontWeight = FontWeight.Bold)
                 }
             }
@@ -166,21 +168,22 @@ fun RecentlyDeletedScreen(
                         imageVector = Icons.Rounded.Delete,
                         contentDescription = null,
                         tint = TextSecondary,
-                        modifier = Modifier.size(52.dp)
+                        modifier = Modifier.size(56.dp)
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = "Recently deleted is empty",
-                        fontSize = 17.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Photos and videos deleted in Lumora are retained for 30 days before being permanently removed.",
-                        fontSize = 13.sp,
+                        text = "Photos and videos deleted in Lumora are safely retained here for 30 days before being permanently removed.",
+                        fontSize = 14.sp,
                         color = TextSecondary,
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        lineHeight = 20.sp
                     )
                 }
             }
@@ -204,6 +207,7 @@ fun RecentlyDeletedScreen(
                         modifier = Modifier
                             .aspectRatio(1f)
                             .background(DarkSurface)
+                            .clickable { selectedItemForAction = item }
                     ) {
                         AsyncImage(
                             model = ImageRequest.Builder(context)
@@ -225,12 +229,131 @@ fun RecentlyDeletedScreen(
                                 .padding(4.dp)
                                 .clip(RoundedCornerShape(4.dp))
                                 .background(Color.Black.copy(alpha = 0.7f))
-                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
                         )
                     }
                 }
             }
         }
     }
-}
 
+    // Action Bottom Sheet for selected item
+    selectedItemForAction?.let { item ->
+        ModalBottomSheet(
+            onDismissRequest = { selectedItemForAction = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = DarkSurfaceElevated
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(140.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(DarkSurface)
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(item.file)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = item.displayName,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = item.displayName,
+                    color = TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "${item.daysRemaining} days remaining in vault",
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 20.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                val success = trashRepo.restoreItem(item)
+                                if (success) {
+                                    Toast.makeText(context, "Restored to gallery", Toast.LENGTH_SHORT).show()
+                                    selectedItemForAction = null
+                                    refreshTrash()
+                                } else {
+                                    Toast.makeText(context, "Failed to restore", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = SoothingBlue, contentColor = Color.White),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Rounded.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Restore")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                trashRepo.deletePermanently(item)
+                                Toast.makeText(context, "Deleted permanently", Toast.LENGTH_SHORT).show()
+                                selectedItemForAction = null
+                                refreshTrash()
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = SoftRed),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Rounded.DeleteForever, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Delete Forever")
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
+
+    // Empty Trash confirmation dialog
+    if (showEmptyTrashDialog) {
+        AlertDialog(
+            onDismissRequest = { showEmptyTrashDialog = false },
+            title = { Text("Empty Recently Deleted?", color = TextPrimary) },
+            text = { Text("All photos and videos in Recently Deleted will be permanently destroyed. This action cannot be undone.", color = TextSecondary) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showEmptyTrashDialog = false
+                    scope.launch {
+                        trashRepo.emptyTrash()
+                        refreshTrash()
+                    }
+                }) {
+                    Text("Delete Forever", color = SoftRed, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEmptyTrashDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = DarkSurfaceElevated
+        )
+    }
+}

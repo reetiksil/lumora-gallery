@@ -1,15 +1,14 @@
 package com.lumora.gallery.ui.viewer
 
-import android.annotation.SuppressLint
 import android.app.WallpaperManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,7 +57,6 @@ import com.lumora.gallery.data.model.MediaItem
 import com.lumora.gallery.data.util.ExifReader
 import com.lumora.gallery.ui.theme.AccentGold
 import com.lumora.gallery.ui.theme.PureBlack
-import kotlinx.coroutines.launch
 
 @Composable
 fun MediaViewerScreen(
@@ -76,8 +75,14 @@ fun MediaViewerScreen(
     }
 
     val safeInitialIndex = initialIndex.coerceIn(0, mediaList.size - 1)
-    val pagerState = rememberPagerState(initialPage = safeInitialIndex, pageCount = { mediaList.size })
-    val currentItem = mediaList[pagerState.currentPage]
+    val pagerState = rememberPagerState(
+        initialPage = safeInitialIndex,
+        pageCount = { mediaList.size }
+    )
+
+    // Guard against index out of bounds during list mutations or deletions
+    val safeIndex = pagerState.currentPage.coerceIn(0, mediaList.size - 1)
+    val currentItem = mediaList.getOrNull(safeIndex) ?: mediaList.first()
 
     var uiVisible by remember { mutableStateOf(true) }
     var showInfoSheet by remember { mutableStateOf(false) }
@@ -88,7 +93,7 @@ fun MediaViewerScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Read EXIF when swiping to new item
+    // Read EXIF metadata when swiping to new item
     LaunchedEffect(currentItem.id) {
         currentExif = ExifReader.extractMetadata(context, currentItem)
     }
@@ -102,31 +107,53 @@ fun MediaViewerScreen(
             .fillMaxSize()
             .background(PureBlack)
     ) {
-        // Horizontal Pager for swiping between media
+        // Horizontal Pager for buttery smooth left/right swipe navigation
         HorizontalPager(
             state = pagerState,
-            key = { index -> mediaList[index].id },
+            key = { index -> if (index in mediaList.indices) mediaList[index].id else index },
             modifier = Modifier.fillMaxSize()
         ) { pageIndex ->
-            val item = mediaList[pageIndex]
+            val item = mediaList.getOrNull(pageIndex) ?: return@HorizontalPager
 
             if (item.isVideo) {
-                VideoPlayer(
-                    uri = item.uri,
-                    isMutedDefault = autoplayVideosMuted,
-                    controlsVisible = uiVisible,
-                    onToggleControls = { uiVisible = !uiVisible }
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            var verticalDragTotal = 0f
+                            detectVerticalDragGestures(
+                                onDragEnd = {
+                                    if (verticalDragTotal < -100f) {
+                                        showInfoSheet = true
+                                    } else if (verticalDragTotal > 150f) {
+                                        onBackClick()
+                                    }
+                                    verticalDragTotal = 0f
+                                },
+                                onVerticalDrag = { _, dragAmount ->
+                                    verticalDragTotal += dragAmount
+                                }
+                            )
+                        }
+                ) {
+                    VideoPlayer(
+                        uri = item.uri,
+                        isMutedDefault = autoplayVideosMuted,
+                        controlsVisible = uiVisible,
+                        onToggleControls = { uiVisible = !uiVisible }
+                    )
+                }
             } else {
                 ZoomableImage(
                     uri = item.uri,
                     onSingleTap = { uiVisible = !uiVisible },
+                    onSwipeUp = { showInfoSheet = true },
                     onDismissRequest = onBackClick
                 )
             }
         }
 
-        // Top App Bar Overlay
+        // Top App Bar Overlay (Matching Screenshot 3)
         AnimatedVisibility(
             visible = uiVisible,
             enter = fadeIn(),
@@ -159,16 +186,16 @@ fun MediaViewerScreen(
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "${pagerState.currentPage + 1} / ${mediaList.size}",
+                            text = "${safeIndex + 1} / ${mediaList.size}",
                             color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                         currentExif?.formattedDate?.let { dateStr ->
                             Text(
                                 text = dateStr,
                                 color = Color.White.copy(alpha = 0.7f),
-                                fontSize = 11.sp
+                                fontSize = 12.sp
                             )
                         }
                     }
@@ -184,7 +211,7 @@ fun MediaViewerScreen(
             }
         }
 
-        // Bottom Action Bar Overlay
+        // Bottom Action Bar Overlay (Matching Screenshot 3)
         AnimatedVisibility(
             visible = uiVisible,
             enter = fadeIn(),
@@ -215,6 +242,14 @@ fun MediaViewerScreen(
                         }
                     )
 
+                    // Favourite Button
+                    ViewerActionButton(
+                        icon = if (isFavourite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                        label = "Favourite",
+                        tint = if (isFavourite) AccentGold else Color.White,
+                        onClick = { isFavourite = !isFavourite }
+                    )
+
                     // Edit Button for Photos
                     if (!currentItem.isVideo) {
                         ViewerActionButton(
@@ -224,22 +259,16 @@ fun MediaViewerScreen(
                         )
                     }
 
-                    // Favourite Button
-                    ViewerActionButton(
-                        icon = if (isFavourite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        label = "Favourite",
-                        tint = if (isFavourite) AccentGold else Color.White,
-                        onClick = { isFavourite = !isFavourite }
-                    )
-
-                    // Delete Button
+                    // Delete Button (Safely triggers delete & trash)
                     ViewerActionButton(
                         icon = Icons.Rounded.Delete,
                         label = "Delete",
-                        onClick = { onDeleteMedia(currentItem) }
+                        onClick = {
+                            onDeleteMedia(currentItem)
+                        }
                     )
 
-                    // Overflow Menu
+                    // More (Overflow Menu)
                     Box {
                         ViewerActionButton(
                             icon = Icons.Rounded.MoreVert,
@@ -283,7 +312,7 @@ fun MediaViewerScreen(
             }
         }
 
-        // Details Bottom Sheet
+        // Details Bottom Sheet (Opens via tap on Info icon or swipe-up gesture)
         if (showInfoSheet) {
             MediaInfoSheet(
                 item = currentItem,
@@ -339,7 +368,6 @@ private fun setAsWallpaper(context: Context, item: MediaItem) {
     try {
         context.startActivity(Intent.createChooser(wallpaperIntent, "Set as Wallpaper"))
     } catch (_: Exception) {
-        // Fallback to WallpaperManager
         try {
             val wallpaperManager = WallpaperManager.getInstance(context)
             context.contentResolver.openInputStream(item.uri)?.use { stream ->
@@ -358,4 +386,3 @@ private fun openWithExternalApp(context: Context, item: MediaItem) {
         context.startActivity(viewIntent)
     }
 }
-

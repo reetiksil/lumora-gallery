@@ -92,5 +92,22 @@ class MilestoneETest {
         assertTrue(scales.contains(TimeScale.MONTHS))
         assertTrue(scales.contains(TimeScale.DAYS))
     }
+
+    @Test
+    fun testThemeModeEnumValues() {
+        val modes = com.lumora.gallery.data.model.ThemeMode.entries
+        assertEquals(3, modes.size)
+        assertTrue(modes.contains(com.lumora.gallery.data.model.ThemeMode.AMOLED_DARK))
+        assertTrue(modes.contains(com.lumora.gallery.data.model.ThemeMode.LIGHT))
+        assertTrue(modes.contains(com.lumora.gallery.data.model.ThemeMode.SYSTEM))
+    }
+
+    @Test
+    fun testNavTabEnumValues() {
+        val tabs = com.lumora.gallery.ui.navigation.NavTab.entries
+        assertEquals(2, tabs.size)
+        assertTrue(tabs.contains(com.lumora.gallery.ui.navigation.NavTab.PHOTOS))
+        assertTrue(tabs.contains(com.lumora.gallery.ui.navigation.NavTab.ALBUMS))
+    }
 }
 

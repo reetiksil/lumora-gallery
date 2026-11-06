@@ -8,7 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -90,19 +90,29 @@ fun TimelineScreen(
         modifier = modifier
             .fillMaxSize()
             .background(PureBlack)
-            .pointerInput(Unit) {
-                detectTransformGestures { _, _, zoom, _ ->
-                    scaleZoom *= zoom
-                    if (scaleZoom > 1.3f) {
-                        if (gridColumns > 2) {
-                            viewModel.setGridColumns(gridColumns - 1)
+            .pointerInput(gridColumns) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        if (event.changes.size > 1) {
+                            // Two-finger pinch gesture
+                            val zoomChange = event.calculateZoom()
+                            scaleZoom *= zoomChange
+                            if (scaleZoom > 1.35f) {
+                                if (gridColumns > 2) {
+                                    viewModel.setGridColumns(gridColumns - 1)
+                                }
+                                scaleZoom = 1f
+                            } else if (scaleZoom < 0.72f) {
+                                if (gridColumns < 5) {
+                                    viewModel.setGridColumns(gridColumns + 1)
+                                }
+                                scaleZoom = 1f
+                            }
+                            event.changes.forEach { it.consume() }
+                        } else {
+                            scaleZoom = 1f
                         }
-                        scaleZoom = 1f
-                    } else if (scaleZoom < 0.75f) {
-                        if (gridColumns < 5) {
-                            viewModel.setGridColumns(gridColumns + 1)
-                        }
-                        scaleZoom = 1f
                     }
                 }
             }

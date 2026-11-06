@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -34,6 +36,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +50,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.lumora.gallery.data.model.Album
 import com.lumora.gallery.data.model.MediaItem
+import com.lumora.gallery.data.model.ThemeMode
 import com.lumora.gallery.ui.albums.AlbumDetailScreen
 import com.lumora.gallery.ui.albums.AlbumsScreen
 import com.lumora.gallery.ui.albums.AlbumsViewModel
@@ -142,7 +146,9 @@ class MainActivity : ComponentActivity() {
         handleIncomingIntent(intent)
 
         setContent {
-            LumoraTheme {
+            val themeMode by app.preferencesRepository.themeModeFlow.collectAsState(initial = ThemeMode.AMOLED_DARK)
+
+            LumoraTheme(themeMode = themeMode) {
                 if (hasPermissions || isExternalViewIntent) {
                     MainNavigationHost(
                         timelineViewModel = timelineViewModel,
@@ -208,15 +214,23 @@ class MainActivity : ComponentActivity() {
     }
 
     fun requestDeleteMedia(item: MediaItem) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val pendingIntent = MediaStore.createDeleteRequest(contentResolver, listOf(item.uri))
-            deleteRequestLauncher.launch(
-                IntentSenderRequest.Builder(pendingIntent.intentSender).build()
-            )
-        } else {
-            try {
-                contentResolver.delete(item.uri, null, null)
-            } catch (_: Exception) {}
+        val app = application as LumoraApplication
+        lifecycleScope.launch {
+            // First save to the 30-day Recently Deleted vault so it can be restored anytime
+            app.trashRepository.trashMedia(item)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    val pendingIntent = MediaStore.createDeleteRequest(contentResolver, listOf(item.uri))
+                    deleteRequestLauncher.launch(
+                        IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                    )
+                } catch (_: Exception) {}
+            } else {
+                try {
+                    contentResolver.delete(item.uri, null, null)
+                } catch (_: Exception) {}
+            }
         }
     }
 
@@ -303,6 +317,17 @@ fun MainNavigationHost(
     val currentTimeScale by timelineViewModel.timeScale.collectAsState()
     val isTimeScaleMode by timelineViewModel.isTimeScaleMode.collectAsState()
 
+    val coroutineScope = rememberCoroutineScope()
+    val tabsPagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
+
+    var showCustomArrangeSheet by remember { mutableStateOf(false) }
+    var showNewAlbumDialog by remember { mutableStateOf(false) }
+
+    // Sync tabsPagerState and currentTab
+    LaunchedEffect(tabsPagerState.currentPage) {
+        currentTab = if (tabsPagerState.currentPage == 0) NavTab.PHOTOS else NavTab.ALBUMS
+    }
+
     // Trigger viewer if external media list resolved after launch
     LaunchedEffect(externalMediaList) {
         if (isExternalViewIntent && externalMediaList.isNotEmpty()) {
@@ -351,12 +376,20 @@ fun MainNavigationHost(
                             navMode = if (isTimeScaleMode) NavMode.TIME_SCALE else NavMode.TABS,
                             currentTab = currentTab,
                             currentTimeScale = currentTimeScale,
-                            onTabSelected = { currentTab = it },
+                            onTabSelected = { tab ->
+                                currentTab = tab
+                                coroutineScope.launch {
+                                    tabsPagerState.animateScrollToPage(if (tab == NavTab.PHOTOS) 0 else 1)
+                                }
+                            },
                             onTimeScaleSelected = { timelineViewModel.setTimeScale(it) },
                             onToggleTimeScaleMode = { timelineViewModel.toggleTimeScaleMode() },
+                            onCustomArrangeClick = { showCustomArrangeSheet = true },
                             onRightActionClick = {
                                 if (currentTab == NavTab.PHOTOS) {
                                     timelineViewModel.openAlbumPicker()
+                                } else {
+                                    showNewAlbumDialog = true
                                 }
                             }
                         )
@@ -364,33 +397,44 @@ fun MainNavigationHost(
                 }
             ) { padding ->
                 Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-                    if (currentTab == NavTab.PHOTOS) {
-                        TimelineScreen(
-                            viewModel = timelineViewModel,
-                            onOpenSettings = { activeScreen = ActiveScreen.SETTINGS },
-                            onOpenSearch = { activeScreen = ActiveScreen.SEARCH },
-                            onItemClick = { item, allItems ->
-                                if (isPickerMode) {
-                                    onMediaSelectedInPicker(item)
-                                } else {
-                                    viewerMediaList = allItems
-                                    viewerInitialIndex = allItems.indexOf(item).coerceAtLeast(0)
-                                    activeScreen = ActiveScreen.VIEWER
+                    HorizontalPager(
+                        state = tabsPagerState,
+                        modifier = Modifier.fillMaxSize(),
+                        userScrollEnabled = !isTimeScaleMode
+                    ) { page ->
+                        if (page == 0) {
+                            TimelineScreen(
+                                viewModel = timelineViewModel,
+                                onOpenSettings = { activeScreen = ActiveScreen.SETTINGS },
+                                onOpenSearch = { activeScreen = ActiveScreen.SEARCH },
+                                onItemClick = { item, allItems ->
+                                    if (isPickerMode) {
+                                        onMediaSelectedInPicker(item)
+                                    } else {
+                                        viewerMediaList = allItems
+                                        viewerInitialIndex = allItems.indexOf(item).coerceAtLeast(0)
+                                        activeScreen = ActiveScreen.VIEWER
+                                    }
                                 }
-                            }
-                        )
-                    } else {
-                        AlbumsScreen(
-                            viewModel = albumsViewModel,
-                            onAlbumClick = { album ->
-                                selectedAlbumForDetail = album
-                                activeScreen = ActiveScreen.ALBUM_DETAIL
-                            },
-                            onOpenSearch = { activeScreen = ActiveScreen.SEARCH },
-                            onOpenPrivateVault = { activeScreen = ActiveScreen.PRIVATE_VAULT },
-                            onOpenCleanup = { activeScreen = ActiveScreen.CLEANUP },
-                            onOpenRecentlyDeleted = { activeScreen = ActiveScreen.RECENTLY_DELETED }
-                        )
+                            )
+                        } else {
+                            AlbumsScreen(
+                                viewModel = albumsViewModel,
+                                onAlbumClick = { album ->
+                                    selectedAlbumForDetail = album
+                                    activeScreen = ActiveScreen.ALBUM_DETAIL
+                                },
+                                onOpenSearch = { activeScreen = ActiveScreen.SEARCH },
+                                onOpenSettings = { activeScreen = ActiveScreen.SETTINGS },
+                                onOpenPrivateVault = { activeScreen = ActiveScreen.PRIVATE_VAULT },
+                                onOpenCleanup = { activeScreen = ActiveScreen.CLEANUP },
+                                onOpenRecentlyDeleted = { activeScreen = ActiveScreen.RECENTLY_DELETED },
+                                showCustomArrangeSheet = showCustomArrangeSheet,
+                                onDismissCustomArrangeSheet = { showCustomArrangeSheet = false },
+                                showNewAlbumDialog = showNewAlbumDialog,
+                                onDismissNewAlbumDialog = { showNewAlbumDialog = false }
+                            )
+                        }
                     }
                 }
             }
@@ -430,12 +474,15 @@ fun MainNavigationHost(
                     }
                 },
                 onDeleteMedia = { item ->
-                    onDeleteMediaItem(item)
-                    // Remove locally from viewer list
-                    viewerMediaList = viewerMediaList.filter { it.id != item.id }
-                    if (viewerMediaList.isEmpty()) {
-                        activeScreen = ActiveScreen.MAIN_TABS
+                    val currentIdx = viewerMediaList.indexOfFirst { it.id == item.id }
+                    val nextList = viewerMediaList.filter { it.id != item.id }
+                    if (nextList.isEmpty()) {
+                        activeScreen = if (selectedAlbumForDetail != null) ActiveScreen.ALBUM_DETAIL else ActiveScreen.MAIN_TABS
+                    } else {
+                        viewerInitialIndex = currentIdx.coerceIn(0, nextList.size - 1)
+                        viewerMediaList = nextList
                     }
+                    onDeleteMediaItem(item)
                 },
                 onEditMedia = { item ->
                     selectedMediaForEdit = item

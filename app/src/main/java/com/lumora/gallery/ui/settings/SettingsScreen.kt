@@ -26,20 +26,28 @@ import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Sort
 import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lumora.gallery.data.model.SortOrder
+import com.lumora.gallery.data.model.ThemeMode
 import com.lumora.gallery.ui.theme.DarkBorder
 import com.lumora.gallery.ui.theme.DarkSurfaceElevated
 import com.lumora.gallery.ui.theme.PureBlack
@@ -66,6 +75,7 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    var showThemeDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -122,7 +132,21 @@ fun SettingsScreen(
             }
 
             // ==========================================
-            // Group 2: Browsing
+            // Group 2: Appearance & Theme
+            // ==========================================
+            item {
+                SettingsSection(title = "Appearance") {
+                    SettingsRowAction(
+                        icon = Icons.Rounded.Palette,
+                        title = "Theme",
+                        subtitle = state.themeMode.displayName,
+                        onClick = { showThemeDialog = true }
+                    )
+                }
+            }
+
+            // ==========================================
+            // Group 3: Browsing
             // ==========================================
             item {
                 SettingsSection(title = "Browsing") {
@@ -215,6 +239,54 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(40.dp))
             }
         }
+    }
+
+    if (showThemeDialog) {
+        AlertDialog(
+            onDismissRequest = { showThemeDialog = false },
+            title = { Text("Choose Theme", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    ThemeMode.entries.forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.setThemeMode(mode)
+                                    showThemeDialog = false
+                                }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = state.themeMode == mode,
+                                onClick = {
+                                    viewModel.setThemeMode(mode)
+                                    showThemeDialog = false
+                                },
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = SoothingBlue,
+                                    unselectedColor = TextSecondary
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = mode.displayName,
+                                color = TextPrimary,
+                                fontSize = 15.sp,
+                                fontWeight = if (state.themeMode == mode) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showThemeDialog = false }) {
+                    Text("Close", color = SoothingBlue)
+                }
+            },
+            containerColor = DarkSurfaceElevated
+        )
     }
 }
 

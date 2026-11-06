@@ -1,5 +1,7 @@
 package com.lumora.gallery.ui.albums
 
+import android.os.Environment
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -19,42 +21,55 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.CollectionsBookmark
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Gif
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MotionPhotosOn
 import androidx.compose.material.icons.rounded.People
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SlowMotionVideo
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.VideoLibrary
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +77,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -75,20 +91,52 @@ import com.lumora.gallery.ui.theme.SoftRed
 import com.lumora.gallery.ui.theme.SoothingBlue
 import com.lumora.gallery.ui.theme.TextPrimary
 import com.lumora.gallery.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
+import java.io.File
 
-@OptIn(ExperimentalFoundationApi::class)
+data class AlbumSectionConfig(
+    val id: String,
+    val title: String,
+    var isVisible: Boolean = true
+)
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AlbumsScreen(
     viewModel: AlbumsViewModel,
     onAlbumClick: (Album) -> Unit,
     onOpenSearch: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     onOpenPrivateVault: () -> Unit = {},
     onOpenCleanup: () -> Unit = {},
     onOpenRecentlyDeleted: () -> Unit = {},
+    showCustomArrangeSheet: Boolean = false,
+    onDismissCustomArrangeSheet: () -> Unit = {},
+    showNewAlbumDialog: Boolean = false,
+    onDismissNewAlbumDialog: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
     var selectedAlbumForActions by remember { mutableStateOf<Album?>(null) }
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    // Section ordering and visibility configuration (Matching Screenshot 4)
+    val sections = remember {
+        mutableStateListOf(
+            AlbumSectionConfig("more_albums", "More albums", isVisible = true),
+            AlbumSectionConfig("featured", "Featured", isVisible = false),
+            AlbumSectionConfig("media_type", "Media type", isVisible = true),
+            AlbumSectionConfig("more", "More", isVisible = true)
+        )
+    }
+
+    var localShowCustomSheet by remember { mutableStateOf(false) }
+    val effectiveShowCustom = showCustomArrangeSheet || localShowCustomSheet
+
+    var localShowNewAlbumDialog by remember { mutableStateOf(false) }
+    val effectiveShowNewAlbum = showNewAlbumDialog || localShowNewAlbumDialog
+    var newAlbumName by remember { mutableStateOf("") }
 
     if (state.isLoading) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -127,19 +175,43 @@ fun AlbumsScreen(
                             tint = TextPrimary
                         )
                     }
-                    IconButton(onClick = { /* Menu */ }) {
-                        Icon(
-                            imageVector = Icons.Rounded.MoreVert,
-                            contentDescription = "Options",
-                            tint = TextPrimary
-                        )
+
+                    Box {
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(
+                                imageVector = Icons.Rounded.MoreVert,
+                                contentDescription = "Options",
+                                tint = TextPrimary
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false },
+                            modifier = Modifier.background(DarkSurfaceElevated)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Custom arrangement", color = TextPrimary) },
+                                onClick = {
+                                    menuExpanded = false
+                                    localShowCustomSheet = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Settings", color = TextPrimary) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onOpenSettings()
+                                }
+                            )
+                        }
                     }
                 }
             }
         }
 
         // ==========================================
-        // 1. PIN Section (Matching Screenshot 1)
+        // 1. PIN Section (Always on top)
         // ==========================================
         item {
             Row(
@@ -160,7 +232,7 @@ fun AlbumsScreen(
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = SoothingBlue,
-                    modifier = Modifier.clickable { /* Toggle Pin ordering / adjustments */ }
+                    modifier = Modifier.clickable { localShowCustomSheet = true }
                 )
             }
         }
@@ -172,7 +244,6 @@ fun AlbumsScreen(
                 state.otherAlbums.take(5)
             }
 
-            // Grid of 3 columns or 2 rows
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(bottom = 20.dp)
@@ -188,179 +259,354 @@ fun AlbumsScreen(
         }
 
         // ==========================================
-        // 2. More Albums (Horizontal row with arrow)
+        // Dynamic Configured Sections (Customizable Order & Visibility)
         // ==========================================
-        if (state.otherAlbums.isNotEmpty()) {
-            item {
+        sections.forEach { sectionConfig ->
+            if (sectionConfig.isVisible) {
+                when (sectionConfig.id) {
+                    "more_albums" -> {
+                        if (state.otherAlbums.isNotEmpty()) {
+                            item {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 4.dp, bottom = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "More albums",
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimary
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                            contentDescription = null,
+                                            tint = TextSecondary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            item {
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    contentPadding = PaddingValues(bottom = 24.dp)
+                                ) {
+                                    items(state.otherAlbums, key = { it.bucketId }) { album ->
+                                        MoreAlbumTile(
+                                            album = album,
+                                            onClick = { onAlbumClick(album) },
+                                            onLongClick = { selectedAlbumForActions = album }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    "featured" -> {
+                        item {
+                            Text(
+                                text = "Featured",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+                        }
+
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 24.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                FeaturedCategoryCard(
+                                    title = "People & pets",
+                                    icon = Icons.Rounded.People,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                FeaturedCategoryCard(
+                                    title = "Smart categories",
+                                    icon = Icons.Rounded.CollectionsBookmark,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                FeaturedCategoryCard(
+                                    title = "Memories",
+                                    icon = Icons.Rounded.AutoAwesome,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+
+                    "media_type" -> {
+                        item {
+                            Text(
+                                text = "Media type",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+                        }
+
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(DarkSurfaceElevated)
+                            ) {
+                                MediaTypeListItem(
+                                    icon = Icons.Rounded.Gif,
+                                    title = "GIF",
+                                    count = "27",
+                                    onClick = { }
+                                )
+                                HorizontalDivider(color = DarkBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
+                                MediaTypeListItem(
+                                    icon = Icons.Rounded.SlowMotionVideo,
+                                    title = "Slo-mo",
+                                    count = "1",
+                                    onClick = { }
+                                )
+                                HorizontalDivider(color = DarkBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
+                                MediaTypeListItem(
+                                    icon = Icons.Rounded.VideoLibrary,
+                                    title = "Videos",
+                                    count = "63",
+                                    onClick = { }
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(24.dp))
+                        }
+                    }
+
+                    "more" -> {
+                        item {
+                            Text(
+                                text = "More",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+                        }
+
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(DarkSurfaceElevated)
+                            ) {
+                                MoreListItem(
+                                    icon = Icons.Rounded.Lock,
+                                    title = "Private",
+                                    hasTrailingArrow = true,
+                                    onClick = onOpenPrivateVault
+                                )
+                                HorizontalDivider(color = DarkBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
+                                MoreListItem(
+                                    icon = Icons.Rounded.CleaningServices,
+                                    title = "Cleanup suggestions",
+                                    hasRedBadge = true,
+                                    hasTrailingArrow = true,
+                                    onClick = onOpenCleanup
+                                )
+                                HorizontalDivider(color = DarkBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
+                                MoreListItem(
+                                    icon = Icons.Rounded.Delete,
+                                    title = "Recently deleted",
+                                    hasTrailingArrow = true,
+                                    onClick = onOpenRecentlyDeleted
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ========================================================
+    // Custom Arrange & Hide Albums Bottom Sheet (Screenshot 4)
+    // ========================================================
+    if (effectiveShowCustom) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                localShowCustomSheet = false
+                onDismissCustomArrangeSheet()
+            },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = DarkSurfaceElevated
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+            ) {
+                // Top Action Bar: Cancel | Custom | Done
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 12.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable { /* See all */ }
-                    ) {
-                        Text(
-                            text = "More albums",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = TextSecondary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
+                    Text(
+                        text = "Cancel",
+                        color = SoothingBlue,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable {
+                            localShowCustomSheet = false
+                            onDismissCustomArrangeSheet()
+                        }
+                    )
 
-            item {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp)
+                    Text(
+                        text = "Custom",
+                        color = TextPrimary,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = "Done",
+                        color = SoothingBlue,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable {
+                            localShowCustomSheet = false
+                            onDismissCustomArrangeSheet()
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Sort albums by custom order or hide albums",
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                // List of section controls
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(DarkSurface)
                 ) {
-                    items(state.otherAlbums, key = { it.bucketId }) { album ->
-                        MoreAlbumTile(
-                            album = album,
-                            onClick = { onAlbumClick(album) },
-                            onLongClick = { selectedAlbumForActions = album }
-                        )
+                    sections.forEachIndexed { index, section ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Menu,
+                                    contentDescription = "Reorder",
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Text(
+                                    text = section.title,
+                                    color = TextPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+
+                            Checkbox(
+                                checked = section.isVisible,
+                                onCheckedChange = { checked ->
+                                    sections[index] = section.copy(isVisible = checked)
+                                },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = SoothingBlue,
+                                    checkmarkColor = Color.White,
+                                    uncheckedColor = TextSecondary
+                                )
+                            )
+                        }
+
+                        if (index < sections.size - 1) {
+                            HorizontalDivider(color = DarkBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
+                        }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(30.dp))
             }
         }
+    }
 
-        // ==========================================
-        // 3. Featured / Categories Section
-        // ==========================================
-        item {
-            Text(
-                text = "Featured",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-        }
-
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                FeaturedCategoryCard(
-                    title = "People & pets",
-                    icon = Icons.Rounded.People,
-                    modifier = Modifier.weight(1f)
-                )
-                FeaturedCategoryCard(
-                    title = "Smart categories",
-                    icon = Icons.Rounded.CollectionsBookmark,
-                    modifier = Modifier.weight(1f)
-                )
-                FeaturedCategoryCard(
-                    title = "Memories",
-                    icon = Icons.Rounded.AutoAwesome,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-
-        // ==========================================
-        // 4. Media Types Section
-        // ==========================================
-        item {
-            Text(
-                text = "Media types",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-        }
-
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(DarkSurfaceElevated)
-            ) {
-                MediaTypeListItem(
-                    icon = Icons.Rounded.Gif,
-                    title = "GIF",
-                    count = "27",
-                    onClick = { /* Filter GIF */ }
-                )
-                HorizontalDivider(color = DarkBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
-                MediaTypeListItem(
-                    icon = Icons.Rounded.SlowMotionVideo,
-                    title = "Slo-mo",
-                    count = "1",
-                    onClick = { /* Filter Slo-mo */ }
-                )
-                HorizontalDivider(color = DarkBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
-                MediaTypeListItem(
-                    icon = Icons.Rounded.VideoLibrary,
-                    title = "Videos",
-                    count = "63",
-                    onClick = { /* Filter Videos */ }
-                )
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-        }
-
-        // ==========================================
-        // 5. More Section (Private, Cleanup, Recently Deleted)
-        // ==========================================
-        item {
-            Text(
-                text = "More",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-        }
-
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(DarkSurfaceElevated)
-            ) {
-                MoreListItem(
-                    icon = Icons.Rounded.Lock,
-                    title = "Private",
-                    hasTrailingArrow = true,
-                    onClick = onOpenPrivateVault
-                )
-                HorizontalDivider(color = DarkBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
-                MoreListItem(
-                    icon = Icons.Rounded.CleaningServices,
-                    title = "Cleanup suggestions",
-                    hasRedBadge = true,
-                    hasTrailingArrow = true,
-                    onClick = onOpenCleanup
-                )
-                HorizontalDivider(color = DarkBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
-                MoreListItem(
-                    icon = Icons.Rounded.Delete,
-                    title = "Recently deleted",
-                    hasTrailingArrow = true,
-                    onClick = onOpenRecentlyDeleted
-                )
-            }
-        }
+    // New Album Dialog (triggered by + button on bottom bar)
+    if (effectiveShowNewAlbum) {
+        AlertDialog(
+            onDismissRequest = {
+                localShowNewAlbumDialog = false
+                onDismissNewAlbumDialog()
+            },
+            title = { Text("Create New Album", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Enter album name:", color = TextSecondary, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newAlbumName,
+                        onValueChange = { newAlbumName = it },
+                        placeholder = { Text("e.g. Vacation 2026", color = TextSecondary) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = SoothingBlue,
+                            unfocusedBorderColor = DarkBorder
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (newAlbumName.isNotBlank()) {
+                        try {
+                            val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                            val newDir = File(picturesDir, newAlbumName.trim())
+                            if (!newDir.exists()) newDir.mkdirs()
+                            Toast.makeText(context, "Album folder created", Toast.LENGTH_SHORT).show()
+                            viewModel.loadAlbums()
+                        } catch (_: Exception) {}
+                    }
+                    newAlbumName = ""
+                    localShowNewAlbumDialog = false
+                    onDismissNewAlbumDialog()
+                }) {
+                    Text("Create", color = SoothingBlue, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    newAlbumName = ""
+                    localShowNewAlbumDialog = false
+                    onDismissNewAlbumDialog()
+                }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = DarkSurfaceElevated
+        )
     }
 
     // Long-press Context Action Sheet
@@ -402,38 +648,29 @@ private fun PinnedAlbumTile(
             modifier = Modifier
                 .size(136.dp)
                 .clip(RoundedCornerShape(20.dp))
-                .background(DarkSurfaceElevated),
-            contentAlignment = Alignment.Center
+                .background(DarkSurface)
         ) {
-            if (album.coverUri != null) {
-                AsyncImage(
-                    model = album.coverUri,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Rounded.Folder,
-                    contentDescription = null,
-                    tint = TextSecondary,
-                    modifier = Modifier.size(36.dp)
-                )
-            }
+            AsyncImage(
+                model = album.coverUri,
+                contentDescription = album.bucketName,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
         }
 
         Spacer(modifier = Modifier.height(6.dp))
+
         Text(
             text = album.bucketName,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
             color = TextPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
             maxLines = 1
         )
         Text(
             text = "${album.itemCount}",
-            fontSize = 12.sp,
-            color = TextSecondary
+            color = TextSecondary,
+            fontSize = 12.sp
         )
     }
 }
@@ -447,46 +684,37 @@ private fun MoreAlbumTile(
 ) {
     Column(
         modifier = Modifier
-            .width(110.dp)
+            .width(112.dp)
             .clip(RoundedCornerShape(16.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Box(
             modifier = Modifier
-                .size(110.dp)
+                .size(112.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(DarkSurfaceElevated),
-            contentAlignment = Alignment.Center
+                .background(DarkSurface)
         ) {
-            if (album.coverUri != null) {
-                AsyncImage(
-                    model = album.coverUri,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Rounded.Folder,
-                    contentDescription = null,
-                    tint = TextSecondary,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
+            AsyncImage(
+                model = album.coverUri,
+                contentDescription = album.bucketName,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(6.dp))
+
         Text(
             text = album.bucketName,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
             color = TextPrimary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
             maxLines = 1
         )
         Text(
             text = "${album.itemCount}",
-            fontSize = 11.sp,
-            color = TextSecondary
+            color = TextSecondary,
+            fontSize = 11.sp
         )
     }
 }
@@ -500,25 +728,23 @@ private fun FeaturedCategoryCard(
     Column(
         modifier = modifier
             .height(100.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(DarkSurfaceElevated)
+            .clickable { }
             .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = TextSecondary,
-            modifier = Modifier.size(32.dp)
+            tint = SoothingBlue,
+            modifier = Modifier.size(26.dp)
         )
-        Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = title,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
             color = TextPrimary,
-            maxLines = 1
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold
         )
     }
 }
@@ -535,32 +761,31 @@ private fun MediaTypeListItem(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = TextPrimary,
-                modifier = Modifier.size(22.dp)
+                tint = SoothingBlue,
+                modifier = Modifier.size(24.dp)
             )
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(14.dp))
             Text(
                 text = title,
+                color = TextPrimary,
                 fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                color = TextPrimary
+                fontWeight = FontWeight.Medium
             )
         }
-
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = count,
-                fontSize = 14.sp,
-                color = TextSecondary
+                color = TextSecondary,
+                fontSize = 14.sp
             )
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(4.dp))
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                 contentDescription = null,
@@ -576,16 +801,16 @@ private fun MoreListItem(
     icon: ImageVector,
     title: String,
     hasRedBadge: Boolean = false,
-    hasTrailingArrow: Boolean = true,
+    hasTrailingArrow: Boolean = false,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -594,33 +819,30 @@ private fun MoreListItem(
                 tint = TextPrimary,
                 modifier = Modifier.size(22.dp)
             )
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(14.dp))
             Text(
                 text = title,
+                color = TextPrimary,
                 fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                color = TextPrimary
+                fontWeight = FontWeight.Medium
             )
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
             if (hasRedBadge) {
+                Spacer(modifier = Modifier.width(8.dp))
                 Box(
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
                         .background(SoftRed)
                 )
-                Spacer(modifier = Modifier.width(10.dp))
             }
-            if (hasTrailingArrow) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = TextSecondary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+        }
+        if (hasTrailingArrow) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = TextSecondary,
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
@@ -635,53 +857,83 @@ private fun AlbumActionBottomSheet(
     onTogglePin: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState()
-
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = sheetState,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = DarkSurfaceElevated
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp)
+                .padding(20.dp)
         ) {
             Text(
                 text = album.bucketName,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleLarge,
                 color = TextPrimary,
-                modifier = Modifier.padding(bottom = 16.dp)
+                fontWeight = FontWeight.Bold
             )
+            Text(
+                text = "${album.itemCount} items",
+                color = TextSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(top = 2.dp, bottom = 16.dp)
+            )
+
+            HorizontalDivider(color = DarkBorder, thickness = 0.5.dp)
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onToggleShowInPhotos)
-                    .padding(vertical = 12.dp),
+                    .padding(vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = if (isShownInPhotos) "Hide from Photos tab" else "Show in Photos tab",
-                    color = TextPrimary,
-                    fontSize = 16.sp
+                Icon(
+                    imageVector = if (isShownInPhotos) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                    contentDescription = null,
+                    tint = TextPrimary,
+                    modifier = Modifier.size(22.dp)
                 )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        text = if (isShownInPhotos) "Hide from Photos tab" else "Show in Photos tab",
+                        color = TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = if (isShownInPhotos) "Keep this album organized in Albums only" else "Include this album's media in your main timeline",
+                        color = TextSecondary,
+                        fontSize = 12.sp
+                    )
+                }
             }
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onTogglePin)
-                    .padding(vertical = 12.dp),
+                    .padding(vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Icon(
+                    imageVector = Icons.Rounded.PushPin,
+                    contentDescription = null,
+                    tint = TextPrimary,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
                 Text(
-                    text = if (isPinned) "Unpin album" else "Pin album",
+                    text = if (isPinned) "Unpin album" else "Pin to top",
                     color = TextPrimary,
-                    fontSize = 16.sp
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium
                 )
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

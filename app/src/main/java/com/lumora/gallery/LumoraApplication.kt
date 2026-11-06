@@ -29,6 +29,9 @@ class LumoraApplication : Application(), ImageLoaderFactory {
     lateinit var mediaRepository: MediaRepository
         private set
 
+    lateinit var trashRepository: com.lumora.gallery.data.repository.TrashRepository
+        private set
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -36,6 +39,7 @@ class LumoraApplication : Application(), ImageLoaderFactory {
         // Initialize repositories
         preferencesRepository = PreferencesRepository(this)
         mediaRepository = MediaRepository(this, preferencesRepository)
+        trashRepository = com.lumora.gallery.data.repository.TrashRepository(this)
     }
 
     override fun newImageLoader(): ImageLoader {

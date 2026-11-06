@@ -27,10 +27,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CalendarViewMonth
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DashboardCustomize
 import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Photo
 import androidx.compose.material.icons.rounded.PhotoAlbum
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -69,17 +71,17 @@ enum class NavMode {
 }
 
 /**
- * HyperOS / iOS style floating pill navigation bar.
+ * HyperOS style floating pill navigation bar.
  *
- * In TABS mode:
- * - Left circle button: toggles Years | Months | Days view
- * - Center pill: Photos | Albums
- * - Right circle button: Sort & Filter (in Photos) or Add (in Albums)
+ * In Photos Tab:
+ * - Left button: Toggles Time Scale (Years | Months | Days) mode.
+ * - Center pill: [Photos | Albums] or [Years | Months | Days].
+ * - Right button: Filter / Sort.
  *
- * In TIME_SCALE mode (active when user taps bottom-left button):
- * - Left circle button: Close (X) to return to normal Photos grid
- * - Center pill: Years | Months | Days
- * - Right circle button: Sort & Filter
+ * In Albums Tab:
+ * - Left button: Custom Arrange button (opens "Custom" arrange/hide albums sheet).
+ * - Center pill: [Photos | Albums].
+ * - Right button: Add (+) to create a new album.
  */
 @Composable
 fun FloatingNavBar(
@@ -89,6 +91,7 @@ fun FloatingNavBar(
     onTabSelected: (NavTab) -> Unit,
     onTimeScaleSelected: (TimeScale) -> Unit = {},
     onToggleTimeScaleMode: () -> Unit = {},
+    onCustomArrangeClick: () -> Unit = {},
     onRightActionClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -102,8 +105,8 @@ fun FloatingNavBar(
     ) {
         // ==========================================
         // Left Action Button
-        // In TABS mode -> Layout / Time scale icon
-        // In TIME_SCALE mode -> Close (X) button
+        // In Photos Tab -> Years/Months/Days time scale or Close (X)
+        // In Albums Tab -> Custom Album Video & Arrange button
         // ==========================================
         Box(
             modifier = Modifier
@@ -114,21 +117,38 @@ fun FloatingNavBar(
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = onToggleTimeScaleMode
+                    onClick = {
+                        if (currentTab == NavTab.PHOTOS) {
+                            onToggleTimeScaleMode()
+                        } else {
+                            onCustomArrangeClick()
+                        }
+                    }
                 ),
             contentAlignment = Alignment.Center
         ) {
             AnimatedContent(
-                targetState = navMode == NavMode.TIME_SCALE,
+                targetState = Pair(currentTab, navMode == NavMode.TIME_SCALE),
                 transitionSpec = {
                     fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) togetherWith
                             fadeOut(animationSpec = spring(stiffness = Spring.StiffnessMediumLow))
                 },
                 label = "nav_left_icon"
-            ) { isTimeScaleMode ->
+            ) { (tab, isTimeScaleMode) ->
+                val icon = when {
+                    tab == NavTab.ALBUMS -> Icons.Rounded.DashboardCustomize
+                    isTimeScaleMode -> Icons.Rounded.Close
+                    else -> Icons.Rounded.CalendarViewMonth
+                }
+                val desc = when {
+                    tab == NavTab.ALBUMS -> "Custom arrange albums"
+                    isTimeScaleMode -> "Exit time view"
+                    else -> "Years, Months, Days view"
+                }
+
                 Icon(
-                    imageVector = if (isTimeScaleMode) Icons.Rounded.Close else Icons.Rounded.CalendarViewMonth,
-                    contentDescription = if (isTimeScaleMode) "Exit time view" else "Years, Months, Days view",
+                    imageVector = icon,
+                    contentDescription = desc,
                     tint = TextPrimary,
                     modifier = Modifier.size(22.dp)
                 )
@@ -149,14 +169,14 @@ fun FloatingNavBar(
             contentAlignment = Alignment.Center
         ) {
             AnimatedContent(
-                targetState = navMode,
+                targetState = if (currentTab == NavTab.PHOTOS) navMode else NavMode.TABS,
                 transitionSpec = {
                     fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) togetherWith
                             fadeOut(animationSpec = spring(stiffness = Spring.StiffnessMediumLow))
                 },
                 label = "center_pill_mode"
             ) { mode ->
-                if (mode == NavMode.TIME_SCALE) {
+                if (mode == NavMode.TIME_SCALE && currentTab == NavTab.PHOTOS) {
                     // --- Years | Months | Days Pill ---
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -219,14 +239,14 @@ fun FloatingNavBar(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            val rightIcon = if (currentTab == NavTab.ALBUMS && navMode == NavMode.TABS) {
+            val rightIcon = if (currentTab == NavTab.ALBUMS) {
                 Icons.Rounded.Add
             } else {
                 Icons.Rounded.FilterList
             }
             Icon(
                 imageVector = rightIcon,
-                contentDescription = "Action",
+                contentDescription = if (currentTab == NavTab.ALBUMS) "Add Album" else "Filter & Sort",
                 tint = TextPrimary,
                 modifier = Modifier.size(22.dp)
             )
