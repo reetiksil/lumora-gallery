@@ -528,10 +528,10 @@ private fun MediaGridItem(
         if (item.isVideo && item.formattedDuration.isNotEmpty()) {
             Row(
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(4.dp)
+                    .align(Alignment.BottomStart)
+                    .padding(6.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(BadgeBackground)
+                    .background(Color.Black.copy(alpha = 0.65f))
                     .padding(horizontal = 5.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -539,7 +539,7 @@ private fun MediaGridItem(
                     imageVector = Icons.Rounded.PlayArrow,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(11.dp)
+                    modifier = Modifier.size(12.dp)
                 )
                 Spacer(modifier = Modifier.size(2.dp))
                 Text(
